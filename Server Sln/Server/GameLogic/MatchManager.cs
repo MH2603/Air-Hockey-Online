@@ -4,13 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace MH.Network
+namespace MH.GameLogic
 {
-    public class Session
+    internal class MatchManager
     {
-        public Session() 
-        {
-        
-        }
     }
 }

@@ -1,13 +1,18 @@
 using LiteNetLib;
 using LiteNetLib.Utils;
 
-namespace Server.Network
+namespace MH.Network
 {
-    public class NetworkListener
+    public class NetworkManager : INetworkManager
     {
         private CancellationTokenSource _cts;
         private NetManager _server;
         private EventBasedNetListener _listener;
+        private Dictionary<int, NetPeer> _connectedPeers = new Dictionary<int, NetPeer>();
+
+        public Action<int> OnClientConnected;
+        public Action<int> OnClientDisconnected;
+        public Action<int, NetPacketReader> OnReceived;
 
         public void Init()
         {
@@ -19,15 +24,34 @@ namespace Server.Network
 
             _listener.ConnectionRequestEvent += HandleConnectionRequest;
             _listener.PeerConnectedEvent += HandlePeerConnected;
+            _listener.PeerDisconnectedEvent += HandlePeerDisconnected;
+            _listener.NetworkReceiveEvent += HandleReceived;
+
+            Task.Run(PollEvents, _cts.Token);
         }
 
         /// <summary>
         /// Must be called regularly - LiteNetLib requires polling to process connections and messages.
         /// </summary>
-        public void PollEvents()
+        void PollEvents()
         {
-            _server?.PollEvents();
+            while (!_cts.Token.IsCancellationRequested)
+            {
+                _server?.PollEvents();
+                Thread.Sleep(15); // ~66 updates/sec
+            }
         }
+
+        public void RegisterReceivedEvent(Action<int, NetPacketReader> callback)
+        {
+            OnReceived += callback;
+        }
+
+        public void UnregisterHandler(Action<int, NetPacketReader> callback)
+        {
+            OnReceived -= callback;
+        }
+
 
         public void Stop()
         {
@@ -35,9 +59,12 @@ namespace Server.Network
 
             _listener.ConnectionRequestEvent -= HandleConnectionRequest;
             _listener.PeerConnectedEvent -= HandlePeerConnected;
+            _listener.PeerDisconnectedEvent -= HandlePeerDisconnected;
 
             _server.Stop();
         }
+
+
 
         #region Callback methods
 
@@ -59,7 +86,23 @@ namespace Server.Network
             var writer = new NetDataWriter();         // Create writer class
             writer.Put("Hello client!");                        // Put some string
             peer.Send(writer, DeliveryMethod.ReliableOrdered);  // Send with reliability
+
+            _connectedPeers[peer.Id] = peer;
+            OnClientConnected?.Invoke(peer.Id);
         }   
+
+        void HandlePeerDisconnected(NetPeer peer, DisconnectInfo info)
+        {
+            Console.WriteLine($"Peer {peer} disconnected: {info.Reason}");
+            _connectedPeers.Remove(peer.Id);
+            OnClientDisconnected?.Invoke(peer.Id);
+        }   
+
+        void HandleReceived(NetPeer peer, NetPacketReader reader, byte channel, DeliveryMethod deliveryMethod)
+        {
+            OnReceived?.Invoke(peer.Id, reader);  
+            reader.Recycle(); // Recycle the reader after processing
+        }
 
         #endregion
 

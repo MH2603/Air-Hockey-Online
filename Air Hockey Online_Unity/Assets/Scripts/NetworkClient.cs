@@ -1,13 +1,16 @@
 using LiteNetLib;
 using LiteNetLib.Utils;
+using MH.Network;
 using UnityEngine;
 
 namespace MH.Scripts
 {
-    public class NetworkClient
+    public class NetworkClient 
     {
         private NetManager _client;
         private EventBasedNetListener _listener;
+
+        private NetDataWriter _writer = new ();
 
         public void Init()
         {
@@ -41,6 +44,19 @@ namespace MH.Scripts
         public void PollEvents()
         {
             _client?.PollEvents();
+        }
+
+        public void Send<TPacket>(TPacket packet)  where TPacket : INetPacket
+        {
+            if (_client == null || _client.FirstPeer == null || _client.FirstPeer.ConnectionState != ConnectionState.Connected)
+            {
+                Debug.LogWarning("Cannot send packet: not connected to server.");
+                return;
+            }
+           
+            _writer.Reset();
+            packet.Serialize(_writer);
+            _client.FirstPeer.Send(_writer, DeliveryMethod.ReliableOrdered);
         }
     }
 }
