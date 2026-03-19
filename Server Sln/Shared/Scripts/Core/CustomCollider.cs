@@ -57,6 +57,7 @@ namespace MH.Core
         public float Radius { get; }
         public CircleCollider(Entity entity, float radius) : base(entity)
         {
+            
             Radius = radius;
         }
 
@@ -98,6 +99,7 @@ namespace MH.Core
         public float Height { get; }
         public RectCollider(Entity entity, float width, float height) : base(entity)
         {
+            
             Width = width;
             Height = height;
         }

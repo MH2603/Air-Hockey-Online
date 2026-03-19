@@ -159,8 +159,8 @@ Camera:
   m_GameObject: {fileID: 330585543}
   m_Enabled: 1
   serializedVersion: 2
-  m_ClearFlags: 1
-  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_ClearFlags: 2
+  m_BackGroundColor: {r: 0.2905661, g: 0.2905661, b: 0.2905661, a: 1}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
   m_FOVAxisMode: 0
@@ -184,8 +184,8 @@ Camera:
   near clip plane: 0.3
   far clip plane: 1000
   field of view: 60
-  orthographic: 0
-  orthographic size: 5
+  orthographic: 1
+  orthographic size: 10
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
@@ -210,7 +210,7 @@ Transform:
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1, z: -10}
+  m_LocalPosition: {x: 0, y: 0, z: -10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -481,6 +481,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1740331251}
   - component: {fileID: 1740331250}
+  - component: {fileID: 1740331252}
   m_Layer: 0
   m_Name: GameRunner
   m_TagString: Untagged
@@ -515,6 +516,29 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1740331252
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1740331249}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0820cd82fb0fe42439999bee3a243dbf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  spawnRoot: {fileID: 1740331251}
+  paddlePrefab: {fileID: 4940670322598289310, guid: 3fffca5aafeafba45a12919000ba73e5,
+    type: 3}
+  puckPrefab: {fileID: 4940670322598289310, guid: fae3c243c3c55634182caf5ff7ea0189,
+    type: 3}
+  goalFramePrefab: {fileID: 4940670322598289310, guid: b4f8f79fcb4ad4f4da9f156115695924,
+    type: 3}
+  wallPrefab: {fileID: 4940670322598289310, guid: 6afbe0bbcf93ecc4d836942664e56445,
+    type: 3}
+  playerIdBottom: 0
+  playerIdTop: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

@@ -60,7 +60,7 @@ namespace MH.Core
     public class Root2D : EntityComponent
     {
 
-        public CustomVector2 Position { get; set; }
+        public CustomVector2 Position ;
         public Root2D(Entity entity) : base(entity)
         {
             

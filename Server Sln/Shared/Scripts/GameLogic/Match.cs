@@ -1,5 +1,4 @@
 using MH.Core;
-using System.Collections;
 using System.Collections.Generic;   
 
 namespace MH.GameLogic
@@ -22,14 +21,38 @@ namespace MH.GameLogic
     
     public class Match
     {
-        private Dictionary<int, HockeyPlayer> _playerMap = new Dictionary<int, HockeyPlayer>();
-        private Puck _puck;
+        // | Object         | Size (puck = 1) |
+        // | -------------- | --------------- |
+        // | Puck           | 1               |
+        // | Paddle         | 2.5             |
+        // | Goal width     | 4.5             |
+        // | Table width    | 9               |
+        // | Table length   | 18              |
+        // | Wall thickness | 0.5             |
+
+        internal const float PuckSize = 1f;
+        internal const float PaddleSize = 2.5f;
+        internal const float GoalFrameSize = 4.5f;
+        internal const float TableWidth = 9f;
+        internal const float TableLength = 18f;
+        internal const float WallThickness = 0.5f;
+
+        private readonly Dictionary<int, HockeyPlayer> _playerMap = new Dictionary<int, HockeyPlayer>();
+        private readonly List<Wall> _walls = new List<Wall>();
+
+        private readonly Puck _puck;
+
+        public Puck Puck => _puck;
+        public IReadOnlyList<Wall> Walls => _walls;
 
         public Match(int playerId1, int playerId2)
         {
             _playerMap[playerId1] = new HockeyPlayer(playerId1);
             _playerMap[playerId2] = new HockeyPlayer(playerId2);
-            _puck = new Puck(1f);
+            _puck = new Puck(PuckSize);
+
+            CreateDefaultWalls();
+            SetInitialObjectPositions(playerId1, playerId2);
         }
 
         public void Tick(float deltaTime)
@@ -51,20 +74,50 @@ namespace MH.GameLogic
             
             player.Paddle.GetComponent<Root2D>().Position = target;
         }
-    }
 
-    public class HockeyPlayer
-    {
-        public int Id { get; set; }
-        public Paddle Paddle { get; set; }
-        public GoalFrame GoalFrame { get; set; }
-
-        public HockeyPlayer(int id)
+        private void CreateDefaultWalls()
         {
-            Id = id;
-            Paddle = new Paddle(2.5f);
-            GoalFrame = new GoalFrame(4.5f);
+            _walls.Clear();
+
+            // Vertical walls (left/right)
+            var leftWall = new Wall(WallThickness, TableLength + 2f * WallThickness);
+            leftWall.GetComponent<Root2D>().Position = new CustomVector2(-TableWidth / 2f - WallThickness / 2f, 0f);
+            _walls.Add(leftWall);
+
+            var rightWall = new Wall(WallThickness, TableLength + 2f * WallThickness);
+            rightWall.GetComponent<Root2D>().Position = new CustomVector2(TableWidth / 2f + WallThickness / 2f, 0f);
+            _walls.Add(rightWall);
+
+            // Horizontal walls (bottom/top)
+            var bottomWall = new Wall(TableWidth + 2f * WallThickness, WallThickness);
+            bottomWall.GetComponent<Root2D>().Position = new CustomVector2(0f, -TableLength / 2f - WallThickness / 2f);
+            _walls.Add(bottomWall);
+
+            var topWall = new Wall(TableWidth + 2f * WallThickness, WallThickness);
+            topWall.GetComponent<Root2D>().Position = new CustomVector2(0f, TableLength / 2f + WallThickness / 2f);
+            _walls.Add(topWall);
         }
 
+        private void SetInitialObjectPositions(int playerIdBottom, int playerIdTop)
+        {
+            // Puck starts at the center.
+            _puck.GetComponent<Root2D>().Position = CustomVector2.Zero;
+
+            var bottom = GetPlayer(playerIdBottom);
+            if (bottom != null)
+            {
+                bottom.Paddle.GetComponent<Root2D>().Position = new CustomVector2(0f, -TableLength / 2f + PaddleSize);
+                bottom.GoalFrame.GetComponent<Root2D>().Position = new CustomVector2(0f, -TableLength / 2f + WallThickness / 2f);
+            }
+
+            var top = GetPlayer(playerIdTop);
+            if (top != null)
+            {
+                top.Paddle.GetComponent<Root2D>().Position = new CustomVector2(0f, TableLength / 2f - PaddleSize);
+                top.GoalFrame.GetComponent<Root2D>().Position = new CustomVector2(0f, TableLength / 2f - WallThickness / 2f);
+            }
+        }
     }
+
+    
 }
