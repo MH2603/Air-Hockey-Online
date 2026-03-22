@@ -6,11 +6,14 @@ using MH.Views;
 
 namespace MH.GameLogic{
 
-    public class GameRunner : MonoBehaviour{
+    public class GameRunner : MonoBehaviour
+    {
 
+        [SerializeField] private BoardConfig _config;
+        
         private Match _currentMatch;
         private bool _isMouseDown;
-
+        
         void Awake()
         {
             
@@ -19,6 +22,8 @@ namespace MH.GameLogic{
         void Update()
         {
             if(_currentMatch == null) return;
+            
+            _currentMatch.Tick(Time.deltaTime);
 
             if(Input.GetMouseButtonDown(0)){
                 _isMouseDown = true;
@@ -35,7 +40,7 @@ namespace MH.GameLogic{
 
         [Button]
         void TestMatch(){
-            _currentMatch = new Match(0,1);
+            _currentMatch = new Match(0,1, _config);
 
             // Spawn/bind the visuals.
             var matchView = GetComponent<MatchView2D>() ?? gameObject.AddComponent<MatchView2D>();

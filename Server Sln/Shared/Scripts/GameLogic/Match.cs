@@ -30,29 +30,34 @@ namespace MH.GameLogic
         // | Table length   | 18              |
         // | Wall thickness | 0.5             |
 
-        internal const float PuckSize = 1f;
-        internal const float PaddleSize = 2.5f;
-        internal const float GoalFrameSize = 4.5f;
-        internal const float TableWidth = 9f;
-        internal const float TableLength = 18f;
-        internal const float WallThickness = 0.5f;
-
+        
         private readonly Dictionary<int, HockeyPlayer> _playerMap = new Dictionary<int, HockeyPlayer>();
         private readonly List<Wall> _walls = new List<Wall>();
 
-        private readonly Puck _puck;
-
+        private Puck _puck;
+        private BoardConfig _config;
+        
         public Puck Puck => _puck;
         public IReadOnlyList<Wall> Walls => _walls;
 
-        public Match(int playerId1, int playerId2)
+        public Match(int playerId1, int playerId2, BoardConfig config)
         {
-            _playerMap[playerId1] = new HockeyPlayer(playerId1);
-            _playerMap[playerId2] = new HockeyPlayer(playerId2);
-            _puck = new Puck(PuckSize);
+            _config = config;
+            
+            _playerMap[playerId1] = new HockeyPlayer(playerId1, config);
+            _playerMap[playerId2] = new HockeyPlayer(playerId2, config);
+            
+            InitPuck(config, _playerMap[playerId1].Paddle, _playerMap[playerId2].Paddle);
 
             CreateDefaultWalls();
             SetInitialObjectPositions(playerId1, playerId2);
+        }
+
+        private void InitPuck(BoardConfig config, Paddle paddle01, Paddle paddle02)
+        {
+            _puck = new Puck(config.PuckRadius);
+            _puck.Collider.TrackOthers.Add( paddle01.GetComponent<RectCollider>());
+            _puck.Collider.TrackOthers.Add( paddle02.GetComponent<RectCollider>());
         }
 
         public void Tick(float deltaTime)
@@ -77,6 +82,10 @@ namespace MH.GameLogic
 
         private void CreateDefaultWalls()
         {
+            float WallThickness = _config.WallThickness;
+            var TableLength = _config.TableLenght;
+            var TableWidth = _config.TableWidth;
+            
             _walls.Clear();
 
             // Vertical walls (left/right)
@@ -100,6 +109,11 @@ namespace MH.GameLogic
 
         private void SetInitialObjectPositions(int playerIdBottom, int playerIdTop)
         {
+            float WallThickness = _config.WallThickness;
+            var TableLength = _config.TableLenght;
+            var TableWidth = _config.TableWidth;
+            var PaddleSize = _config.PaddleRadius;
+            
             // Puck starts at the center.
             _puck.GetComponent<Root2D>().Position = CustomVector2.Zero;
 

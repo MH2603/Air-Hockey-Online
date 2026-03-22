@@ -8,6 +8,7 @@ namespace MH.GameLogic
         {
             AddComponent(new Root2D(this));
             AddComponent(new CircleCollider(this, size));
+            AddComponent(new MoveComponent(this));
         }
 
     }

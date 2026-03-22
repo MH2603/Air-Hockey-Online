@@ -7,11 +7,11 @@ namespace MH.GameLogic
         public Paddle Paddle { get; set; }
         public GoalFrame GoalFrame { get; set; }
 
-        public HockeyPlayer(int id)
+        public HockeyPlayer(int id, BoardConfig config)
         {
             Id = id;
-            Paddle = new Paddle(Match.PaddleSize);
-            GoalFrame = new GoalFrame(Match.GoalFrameSize);
+            Paddle = new Paddle(config.PaddleRadius);
+            GoalFrame = new GoalFrame(config.GoalWidth);
         }
 
     }
