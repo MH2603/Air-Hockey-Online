@@ -1,4 +1,6 @@
+using System;
 using MH.Core;
+using UnityEngine;
 
 namespace MH.GameLogic{
 
@@ -17,16 +19,32 @@ namespace MH.GameLogic{
     // Friction       = 0
     // Linear drag    = 0
 
+    [Serializable]
     public class BoardConfig{
-
-        public float PuckRadius = 1f;
-        public float PaddleRadius = 2.5f;
-        public float GoalWidth = 4.5f;
+        
+        [Header("TABLE")]
         public float TableWidth = 9f;
         public float TableLenght = 18f;
+        public float GoalWidth = 4.5f;
+        
+        [Header("OBJECTS")]
+        public float PuckRadius = 1f;
+        public float PaddleRadius = 2.5f;
+        
+        [Header("WALLS")]
         public float WallThickness = 0.5f;
         
+        [Header("PHYSICS")]
         public float Bounciness     = 0.95f;
         public float f = 0.5f;
+
+        [Header(" SPEEDS")]
+        public float MinPuckSpeed = 0.5f;
+        public float MaxPuckSpeed = 50f;
+
+        public float PaddleMaxSpeed = 28f;
+
+        /// <summary> Scales (mouse target − paddle position) into velocity when driving paddle from a position target. </summary>
+        public float PaddlePositionFollow = 12f;
     }
 }

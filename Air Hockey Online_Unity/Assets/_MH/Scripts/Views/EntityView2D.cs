@@ -40,7 +40,7 @@ namespace MH.Views
             {
                 if (TryGetCircleCollider(entity, out var circleCollider))
                 {
-                    var size = circleCollider.Radius * circleScaleMultiplier;
+                    var size = circleCollider.Radius * circleScaleMultiplier * 2;
                     if (hasMoveableObject)
                     {
                         // Prefer MoveableObject if present, since it already handles transform updates.

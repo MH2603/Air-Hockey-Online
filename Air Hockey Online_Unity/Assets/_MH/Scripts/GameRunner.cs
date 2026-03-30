@@ -13,6 +13,8 @@ namespace MH.GameLogic{
         
         private Match _currentMatch;
         private bool _isMouseDown;
+
+        public Match CurrentMatch => _currentMatch;
         
         void Awake()
         {
@@ -34,7 +36,17 @@ namespace MH.GameLogic{
             if(_isMouseDown){
                 Vector3 mousePos = MouseUtils.GetMouseWorldPosition();
                 CustomVector2 pos = new CustomVector2(mousePos.x, mousePos.y);
-                _currentMatch.MovePaddle(0, pos);
+                var p0 = _currentMatch.GetPlayer(0);
+                if (p0 != null)
+                {
+                    var paddlePos = p0.Paddle.GetComponent<Root2D>().Position;
+                    var vel = (pos - paddlePos) * _config.PaddlePositionFollow;
+                    _currentMatch.SetPaddleVelocity(0, vel);
+                }
+            }
+            else
+            {
+                _currentMatch.SetPaddleVelocity(0, CustomVector2.Zero);
             }
         }
 

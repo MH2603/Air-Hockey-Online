@@ -92,6 +92,38 @@ namespace MH.Core
             return (float)Math.Sqrt(dx * dx + dy * dy);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float SqrMagnitude(CustomVector2 v) => v.x * v.x + v.y * v.y;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float Magnitude(CustomVector2 v) => (float)Math.Sqrt(SqrMagnitude(v));
+
+        public const float EpsilonSq = 1e-12f;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static CustomVector2 Normalize(CustomVector2 v)
+        {
+            float m = Magnitude(v);
+            if (m < 1e-6f) return Zero;
+            return v / m;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float Dot(CustomVector2 a, CustomVector2 b) => a.x * b.x + a.y * b.y;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static CustomVector2 Reflect(CustomVector2 dir, CustomVector2 normal)
+        {
+            return dir - 2f * Dot(dir, normal) * normal;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static CustomVector2 ClampMagnitude(CustomVector2 v, float maxLength)
+        {
+            if (maxLength <= 0f || SqrMagnitude(v) <= maxLength * maxLength) return v;
+            return Normalize(v) * maxLength;
+        }
+
         public override readonly string ToString() => $"({x}, {y})";
     }
 }

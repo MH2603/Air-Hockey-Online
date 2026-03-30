@@ -32,7 +32,10 @@ namespace MH.Core
         public List<BaseCollider> TrackOthers = new List<BaseCollider>();
         public Action<CollisionInfo> OnCollision;   
 
-        public BaseCollider(Entity entity) : base(entity) { }
+        protected BaseCollider(Entity entity, CollisionType collisionType) : base(entity)
+        {
+            Type = collisionType;
+        }
 
         public override void Tick(float deltaTime)
         {
@@ -55,9 +58,8 @@ namespace MH.Core
     public class CircleCollider : BaseCollider
     {
         public float Radius { get; }
-        public CircleCollider(Entity entity, float radius) : base(entity)
+        public CircleCollider(Entity entity, float radius) : base(entity, CollisionType.Circle)
         {
-            
             Radius = radius;
         }
 
@@ -97,9 +99,8 @@ namespace MH.Core
     {
         public float Width { get; }
         public float Height { get; }
-        public RectCollider(Entity entity, float width, float height) : base(entity)
+        public RectCollider(Entity entity, float width, float height) : base(entity, CollisionType.Rect)
         {
-            
             Width = width;
             Height = height;
         }
