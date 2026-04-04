@@ -70,10 +70,10 @@ namespace MH.GameLogic
             foreach (var player in _playerMap.Values)
                 player.Paddle.Tick(deltaTime);
 
-            _puck.Tick(deltaTime);
-
             foreach (var player in _playerMap.Values)
                 ClampPaddlePosition(player);
+            
+            _puck.Tick(deltaTime);
         }
 
         public HockeyPlayer GetPlayer(int playerId){
@@ -122,19 +122,29 @@ namespace MH.GameLogic
         void ClampPaddlePosition(HockeyPlayer player)
         {
             var root = player.Paddle.GetComponent<Root2D>();
+            var move = player.Paddle.GetComponent<MoveComponent>();
             float maxX = _config.TableWidth * 0.5f - _config.PaddleRadius;
             float maxY = _config.TableLenght * 0.5f - _config.PaddleRadius;
-            float x = Math.Clamp(root.Position.x, -maxX, maxX);
-            float y = root.Position.y;
+            float px = root.Position.x;
+            float py = root.Position.y;
+            float x = Math.Clamp(px, -maxX, maxX);
+            float y = py;
             const float guard = 0.05f;
             if (player.Id == _playerIdBottom)
-                y = Math.Clamp(y, -maxY, -guard);
+                y = Math.Clamp(py, -maxY, -guard);
             else if (player.Id == _playerIdTop)
-                y = Math.Clamp(y, guard, maxY);
+                y = Math.Clamp(py, guard, maxY);
             else
-                y = Math.Clamp(y, -maxY, maxY);
+                y = Math.Clamp(py, -maxY, maxY);
 
             root.Position = new CustomVector2(x, y);
+
+            // clamp paddle velocity to zero if hitting the wall, to prevent "sticking" from move integration pushing into the wall each tick.
+            var vel = move.CurrentVelocity;
+            if (Math.Abs(px - x) > 1e-4f) vel.x = 0f;
+            if (Math.Abs(py - y) > 1e-4f) vel.y = 0f;
+            move.SetVelocity(vel);
+                
         }
 
         private void CreateDefaultWalls()

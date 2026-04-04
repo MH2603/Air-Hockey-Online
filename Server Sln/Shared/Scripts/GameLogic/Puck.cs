@@ -11,11 +11,5 @@ namespace MH.GameLogic{
             AddComponent(new CircleCollider( this, size));
             AddComponent(new MoveComponent(this));
         }
-
-        public override void Tick(float deltaTime)
-        {
-            GetComponent<MoveComponent>().Tick(deltaTime);
-            GetComponent<CircleCollider>().Tick(deltaTime);
-        }
     }
 }

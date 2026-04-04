@@ -25,8 +25,6 @@ namespace MH.GameLogic{
         {
             if(_currentMatch == null) return;
             
-            _currentMatch.Tick(Time.deltaTime);
-
             if(Input.GetMouseButtonDown(0)){
                 _isMouseDown = true;
             }else if(Input.GetMouseButtonUp(0)){
@@ -48,6 +46,8 @@ namespace MH.GameLogic{
             {
                 _currentMatch.SetPaddleVelocity(0, CustomVector2.Zero);
             }
+            
+            _currentMatch.Tick(Time.deltaTime);
         }
 
         [Button]
