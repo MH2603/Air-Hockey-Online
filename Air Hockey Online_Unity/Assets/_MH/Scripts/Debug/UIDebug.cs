@@ -22,7 +22,7 @@ namespace MH.Editor
         void Awake()
         {
             if (gameRunner == null)
-                gameRunner = FindFirstObjectByType<GameRunner>();
+                gameRunner = GameRunner.Instance;
         }
 
         void OnGUI()

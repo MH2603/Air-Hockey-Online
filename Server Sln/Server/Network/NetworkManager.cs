@@ -60,8 +60,19 @@ namespace MH.Network
             _listener.ConnectionRequestEvent -= HandleConnectionRequest;
             _listener.PeerConnectedEvent -= HandlePeerConnected;
             _listener.PeerDisconnectedEvent -= HandlePeerDisconnected;
+            _listener.NetworkReceiveEvent -= HandleReceived;
 
             _server.Stop();
+        }
+
+        public void SendPacket<TPacket>(int peerId, TPacket packet) where TPacket : INetPacket
+        {
+            if (!_connectedPeers.TryGetValue(peerId, out var peer))
+                return;
+
+            var writer = new NetDataWriter();
+            packet.Serialize(writer);
+            peer.Send(writer, DeliveryMethod.ReliableOrdered);
         }
 
 
@@ -82,10 +93,7 @@ namespace MH.Network
 
         void HandlePeerConnected(NetPeer peer)
         {
-            Console.WriteLine("We got connection: {0}", peer);  // Show peer IP
-            var writer = new NetDataWriter();         // Create writer class
-            writer.Put("Hello client!");                        // Put some string
-            peer.Send(writer, DeliveryMethod.ReliableOrdered);  // Send with reliability
+            Console.WriteLine("We got connection: {0}", peer);
 
             _connectedPeers[peer.Id] = peer;
             OnClientConnected?.Invoke(peer.Id);

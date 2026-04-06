@@ -6,17 +6,26 @@ using UnityEngine;
 namespace MH.UI
 {
     /// <summary>
-    /// Central UI entry: registers prefabs/instances, <see cref="Show{TView}"/> / <see cref="Hide{TView}"/>,
-    /// window stack, and Escape (handled in <see cref="Update"/>).
+    /// Central UI entry: at <see cref="Start"/> instantiates configured view prefabs (inactive), then applies
+    /// <see cref="UIView.ShowWhenStart"/>; also supports <see cref="RegisterPrefab{TView}"/> / <see cref="RegisterInstance{TView}"/>,
+    /// <see cref="Show{TView}"/> / <see cref="Hide{TView}"/>, window stack, and Escape (in <see cref="Update"/>).
     /// </summary>
     public class UIManager : MonoSingleton<UIManager>
     {
         public Transform HUDParent;
         public Transform WindowParent;
 
+        [SerializeField] private List<UIView> _viewPrefabs = new();
+
         private readonly Dictionary<Type, UIView> _prefabs = new();
         private readonly Dictionary<Type, UIView> _instances = new();
         private readonly List<UIView> _windowStack = new();
+
+        private void Start()
+        {
+            InstantiateViewPrefabs();
+            ApplyShowWhenStart();
+        }
 
         private void Update()
         {
@@ -60,10 +69,7 @@ namespace MH.UI
 
         public void Show<TView>() where TView : UIView
         {
-            var view = GetOrCreate<TView>();
-            if (view.Layer == UILayer.Window)
-                PushOrBringToFront(view);
-            view.Show();
+            ShowInstance(GetOrCreate<TView>());
         }
 
         public void Hide<TView>() where TView : UIView
@@ -104,6 +110,61 @@ namespace MH.UI
             if (_windowStack.Contains(window))
                 _windowStack.Remove(window);
             _windowStack.Add(window);
+        }
+
+        private void ShowInstance(UIView view)
+        {
+            if (view.Layer == UILayer.Window)
+                PushOrBringToFront(view);
+            view.Show();
+        }
+
+        private void InstantiateViewPrefabs()
+        {
+            if (_viewPrefabs == null || _viewPrefabs.Count == 0)
+                return;
+
+            foreach (var prefab in _viewPrefabs)
+            {
+                if (prefab == null)
+                    continue;
+
+                var type = prefab.GetType();
+                if (_instances.ContainsKey(type))
+                {
+                    Debug.LogWarning(
+                        $"UIManager: duplicate prefab type '{type.Name}' in {nameof(_viewPrefabs)}; skipping duplicate.");
+                    continue;
+                }
+
+                var parent = prefab.Layer == UILayer.Window ? WindowParent : HUDParent;
+                if (parent == null)
+                {
+                    Debug.LogError(
+                        $"UIManager: cannot instantiate '{prefab.name}' — assign {(prefab.Layer == UILayer.Window ? nameof(WindowParent) : nameof(HUDParent))}.");
+                    continue;
+                }
+
+                var go = UnityEngine.Object.Instantiate(prefab.gameObject, parent);
+                if (!go.TryGetComponent(type, out var comp) || comp is not UIView instance)
+                {
+                    UnityEngine.Object.Destroy(go);
+                    Debug.LogError($"UIManager: prefab '{prefab.name}' is missing a {type.Name} component on the root.");
+                    continue;
+                }
+
+                go.SetActive(false);
+                _instances[type] = instance;
+            }
+        }
+
+        private void ApplyShowWhenStart()
+        {
+            foreach (var view in _instances.Values)
+            {
+                if (view != null && view.ShowWhenStart)
+                    ShowInstance(view);
+            }
         }
 
         private TView GetOrCreate<TView>() where TView : UIView

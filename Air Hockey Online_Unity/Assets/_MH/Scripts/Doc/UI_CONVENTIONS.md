@@ -10,4 +10,4 @@ All **on-screen UI text** in this project uses **TextMesh Pro** (`TMPro.TMP_Text
 
 **Prefabs**: Screen prefabs (for example `UIMainMenu`) live under `Assets/_MH/Prefab/UI/`. Build or update them in the Unity Editor, or via your **Unity MCP** integration in Cursor when that server is connected and exposes asset/prefab tools (this repo does not ship an Editor script for that).
 
-Related: [`UI_SYSTEM_ARCHITECTURE.md`](UI_SYSTEM_ARCHITECTURE.md) (UIManager, layers, window stack).
+Related: [`UI_SYSTEM_ARCHITECTURE.md`](UI_SYSTEM_ARCHITECTURE.md) (UIManager prefab list, `ShowWhenStart`, layers, window stack).

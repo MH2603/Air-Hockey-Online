@@ -10,6 +10,7 @@ Console.WriteLine("Server running on port 9050. Press any key to stop...");
 
 var packetDispatcher = new PacketDispatcher(networkListener);
 var testHandler = new TestPacketHandler(packetDispatcher);
+using var matchmaking = new MatchmakingHandler(packetDispatcher, networkListener);
 
 var isRunning = true;
 while (isRunning)
@@ -21,7 +22,7 @@ while (isRunning)
     {
         case "exit":
             isRunning = false;
-            return ;
+            break;
     }
 }
 

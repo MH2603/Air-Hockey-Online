@@ -1,3 +1,4 @@
+using MH.GameLogic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -9,6 +10,8 @@ namespace MH.UI
         [SerializeField] private Image _backgroundImage;
         [SerializeField] private TMP_Text _titleText;
         [SerializeField] private Button _startButton;
+        [Tooltip("When true, Start triggers connect + find match via GameRunner.")]
+        [SerializeField] private bool _startMatchmakingOnClick = true;
 
         public string Title
         {
@@ -42,6 +45,8 @@ namespace MH.UI
 
         protected virtual void OnStartClicked()
         {
+            if (_startMatchmakingOnClick)
+                GameRunner.Instance?.RequestMatchmaking();
         }
     }
 }

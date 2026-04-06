@@ -24,6 +24,10 @@ This document describes the **intended** structure for a small, predictable UI l
 
 Central registry and coordinator.
 
+**Inspector setup**
+
+- **`_viewPrefabs`**: assign one prefab per concrete `UIView` type. On **`Start`**, the manager **instantiates** each listed prefab under **`HUDParent`** or **`WindowParent`** (from each prefab’s **`Layer`**). New instances are **`SetActive(false)`** by default. After all are created, any view with **`ShowWhenStart`** enabled on the **`UIView`** component is shown via the same path as **`Show<TView>()`** (including window stack push for **Window** layers).
+
 **Responsibilities**
 
 - Resolve or instantiate views by type `TView : UIView` (see “Lifecycle” below).
@@ -45,6 +49,10 @@ Central registry and coordinator.
 ### `UIView` (base class)
 
 Base for all UI screens/panels (MonoBehaviour or plain class with a reference to a root `GameObject` / `CanvasGroup`, depending on project convention).
+
+**Fields**
+
+- **`_showWhenStart`** (serialized bool): when enabled on a prefab or registered instance, **`UIManager`** shows that view during **`Start`** (after list-based instantiation). Use for default HUD or first menu screen.
 
 **Responsibilities**
 
@@ -105,8 +113,10 @@ Suggested subfolders under `UI` (optional): `Hud/`, `Windows/`, `Core/` (`UIMana
 
 ## Lifecycle and registration (implementation notes)
 
-- **Prefab vs scene**: common patterns are (1) register prefabs in `UIManager` (dictionary `Type → prefab`), or (2) find pre-placed roots under a `Canvas`. The manager instantiates once per type (pooling optional) and reuses instances.
-- **Show&lt;T&gt;**: get or create `T`, call `UIView.Show()`, then if `T` is a Window, push to stack.
+- **Prefab list (`_viewPrefabs`)**: assign prefabs in the Inspector; at **`Start`**, each is instantiated once under the correct parent, left **inactive**, then **`ShowWhenStart`** is applied so initial visibility matches the checkbox (still using stack rules for windows).
+- **Prefab vs scene (other paths)**: you can still **`RegisterPrefab&lt;T&gt;`** (code) or **`RegisterInstance&lt;T&gt;`** (scene object). For those, **`GetOrCreate`** instantiates on first **`Show&lt;T&gt;`** when only a prefab was registered, or reuses a pre-placed instance. Pooling is optional.
+- **Duplicate types**: only one instance per concrete `UIView` type in **`_instances`**; a second entry in **`_viewPrefabs`** with the same type is skipped with a console warning.
+- **Show&lt;T&gt;**: get or create `T`, call **`ShowInstance`**: `UIView.Show()`, and if `T` is a Window, push to stack.
 - **Hide&lt;T&gt;**: call `UIView.Hide()`, remove from stack if it is a Window (by reference or top match).
 - **Threading**: UI must run on Unity’s main thread; `MonoSingleton` resolves or creates the manager on first `Instance` access.
 
@@ -116,8 +126,8 @@ Suggested subfolders under `UI` (optional): `Hud/`, `Windows/`, `Core/` (`UIMana
 
 | Concept | Description |
 |---------|-------------|
-| `UIManager` | `MonoSingleton` hub: `Show<TView>`, `Hide<TView>`, layer routing, window stack, Escape handling. |
-| `UIView` | Base with `Show()` / `Hide()` for each panel. |
+| `UIManager` | `MonoSingleton` hub: `_viewPrefabs` → instantiate at `Start` (inactive), `ShowWhenStart`, `Show<TView>`, `Hide<TView>`, layer routing, window stack, Escape handling. |
+| `UIView` | Base with `_showWhenStart`, `Show()` / `Hide()` for each panel. |
 | HUD | Non-stacked overlay. |
 | Window | Stacked; Escape pops top window. |
 

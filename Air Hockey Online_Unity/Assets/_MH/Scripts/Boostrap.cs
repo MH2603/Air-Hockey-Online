@@ -1,41 +1,40 @@
-using MH.Scripts;
+using MH.Network;
+using MH.UI;
 using UnityEngine;
 
 namespace MH.GameLogic
 {
     public class Bootstrap : MonoBehaviour
     {
-        private NetworkClient _networkClient;
+        [SerializeField] private GameRunner _gameRunner;
+        [SerializeField] private UIManager _uiManager;
+        
+        private ClientNetwork _clientNetwork;
 
-        void Start()
+        void Awake()
         {
-            _networkClient = new NetworkClient();
-            _networkClient.Init();
+            _clientNetwork = new ClientNetwork();
+            _clientNetwork.Init();
 
-            Application.targetFrameRate = 60;   
+            var gameRunner = Instantiate(_gameRunner);
+            gameRunner.Init(_clientNetwork);
+
+            Instantiate(_uiManager);
         }
 
         void Update()
         {
-            // LiteNetLib requires PollEvents every frame to process connection/receive events
-            _networkClient?.PollEvents();
-
-            if ( Input.GetMouseButtonDown(0))
-            {
-                TestSendPacket();   
-            }
+            _clientNetwork?.PollEvents();
         }
 
-        void TestSendPacket()
+        void OnDestroy()
         {
-            var mousePos = Input.mousePosition;
-            var packet = new c2s_mouse_pos
-            {
-                X = mousePos.x,
-                Y = mousePos.y
-            };
-            _networkClient?.Send(packet);   
+            _clientNetwork?.Dispose();
+        }
 
+        void OnApplicationQuit()
+        {
+            _clientNetwork?.Dispose();
         }
     }
 }
