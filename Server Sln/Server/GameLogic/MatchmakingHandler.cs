@@ -9,6 +9,8 @@ namespace MH.GameLogic
         private readonly List<int> _waiting = new();
         private int _nextMatchId = 1;
 
+        public event Action<int, int, int> OnMatchCreated; // (matchId, peerBottom, peerTop)
+
         public MatchmakingHandler(PacketDispatcher dispatcher, NetworkManager network)
         {
             _dispatcher = dispatcher;
@@ -37,6 +39,9 @@ namespace MH.GameLogic
                     var matchId = _nextMatchId++;
                     _network.SendPacket(other, new s2c_match_found { MatchId = matchId, LocalPlayerIndex = 0 });
                     _network.SendPacket(fromId, new s2c_match_found { MatchId = matchId, LocalPlayerIndex = 1 });
+
+                    // Index 0 is treated as the bottom player (playerId 0) on the authoritative server match.
+                    OnMatchCreated?.Invoke(matchId, other, fromId);
                 }
                 else
                 {

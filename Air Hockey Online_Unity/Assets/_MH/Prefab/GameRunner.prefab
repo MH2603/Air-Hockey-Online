@@ -54,7 +54,7 @@ MonoBehaviour:
     WallThickness: 2
     Bounciness: 0.95
     f: 0.5
-    MinPuckSpeed: 0.2
+    MinPuckSpeed: 0.1
     MaxPuckSpeed: 30
     PaddleMaxSpeed: 100
     PaddlePositionFollow: 50

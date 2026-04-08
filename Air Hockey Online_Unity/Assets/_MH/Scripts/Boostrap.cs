@@ -8,13 +8,17 @@ namespace MH.GameLogic
     {
         [SerializeField] private GameRunner _gameRunner;
         [SerializeField] private UIManager _uiManager;
-        
+        [Tooltip("Editor/PC: localhost. Physical Android on Wi‑Fi: your dev machine's LAN IPv4. Android Emulator: 10.0.2.2")]
+        [SerializeField] private string _serverHost = "localhost";
+        [SerializeField] private int _serverPort = 9050;
+
         private ClientNetwork _clientNetwork;
 
         void Awake()
         {
             _clientNetwork = new ClientNetwork();
             _clientNetwork.Init();
+            _clientNetwork.SetConnectionTarget(_serverHost, _serverPort);
 
             var gameRunner = Instantiate(_gameRunner);
             gameRunner.Init(_clientNetwork);

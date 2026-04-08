@@ -1,3 +1,4 @@
+using System.Net;
 using LiteNetLib;
 using LiteNetLib.Utils;
 
@@ -5,6 +6,10 @@ namespace MH.Network
 {
     public class NetworkManager : INetworkManager
     {
+        private const int ListenPort = 9050;
+        private const string LanDiscoveryQuery = "AHO_DISCOVER";
+        private const string LanDiscoveryResponsePrefix = "AHO_HOST";
+
         private CancellationTokenSource _cts;
         private NetManager _server;
         private EventBasedNetListener _listener;
@@ -17,8 +22,11 @@ namespace MH.Network
         public void Init()
         {
             _listener = new EventBasedNetListener();
-            _server = new NetManager(_listener);
-            _server.Start(9050 /* port */);
+            _server = new NetManager(_listener)
+            {
+                UnconnectedMessagesEnabled = true
+            };
+            _server.Start(ListenPort);
 
             _cts = new CancellationTokenSource();
 
@@ -26,8 +34,7 @@ namespace MH.Network
             _listener.PeerConnectedEvent += HandlePeerConnected;
             _listener.PeerDisconnectedEvent += HandlePeerDisconnected;
             _listener.NetworkReceiveEvent += HandleReceived;
-
-            Task.Run(PollEvents, _cts.Token);
+            _listener.NetworkReceiveUnconnectedEvent += HandleLanDiscoveryUnconnected;
         }
 
         /// <summary>
@@ -40,6 +47,12 @@ namespace MH.Network
                 _server?.PollEvents();
                 Thread.Sleep(15); // ~66 updates/sec
             }
+        }
+        
+        public void Tick()
+        {
+            if(!_cts.Token.IsCancellationRequested)
+                _server?.PollEvents();
         }
 
         public void RegisterReceivedEvent(Action<int, NetPacketReader> callback)
@@ -61,6 +74,7 @@ namespace MH.Network
             _listener.PeerConnectedEvent -= HandlePeerConnected;
             _listener.PeerDisconnectedEvent -= HandlePeerDisconnected;
             _listener.NetworkReceiveEvent -= HandleReceived;
+            _listener.NetworkReceiveUnconnectedEvent -= HandleLanDiscoveryUnconnected;
 
             _server.Stop();
         }
@@ -110,6 +124,37 @@ namespace MH.Network
         {
             OnReceived?.Invoke(peer.Id, reader);  
             reader.Recycle(); // Recycle the reader after processing
+        }
+
+        void HandleLanDiscoveryUnconnected(IPEndPoint remoteEndPoint, NetPacketReader reader, UnconnectedMessageType messageType)
+        {
+            try
+            {
+                if (reader.AvailableBytes <= 0)
+                    return;
+
+                string msg;
+                try
+                {
+                    msg = reader.GetString();
+                }
+                catch
+                {
+                    return;
+                }
+
+                if (!string.Equals(msg, LanDiscoveryQuery, StringComparison.Ordinal))
+                    return;
+
+                var response = $"{LanDiscoveryResponsePrefix}|{ListenPort}|{Environment.MachineName}";
+                var writer = new NetDataWriter();
+                writer.Put(response);
+                _server.SendUnconnectedMessage(writer, remoteEndPoint);
+            }
+            finally
+            {
+                reader.Recycle();
+            }
         }
 
         #endregion

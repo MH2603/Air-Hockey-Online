@@ -105,6 +105,8 @@ MonoBehaviour:
   _viewPrefabs:
   - {fileID: 8665643561709882357, guid: a1112e167cfee48298e2523c0b78811d, type: 3}
   - {fileID: 8665643561709882357, guid: c3d4e5f60718293a4b5c6d7e8f90a1b2, type: 3}
+  - {fileID: 100002, guid: 5b6f9b23c8f2484c8f7e437c29c4d10a, type: 3}
+  - {fileID: 100002, guid: d7a0bcb0cf4b4e3abf1655f8d4b3a9f2, type: 3}
 --- !u!1 &7315717184780071999
 GameObject:
   m_ObjectHideFlags: 0

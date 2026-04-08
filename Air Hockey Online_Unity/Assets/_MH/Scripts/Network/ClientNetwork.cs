@@ -13,9 +13,18 @@ namespace MH.Network
         private PacketDispatcher _dispatcher;
         private bool _disposed;
         private bool _clientStarted;
+        private string _serverHost = "localhost";
+        private int _serverPort = 9050;
         private event Action<int, NetPacketReader> _received;
 
         public PacketDispatcher Dispatcher => _dispatcher;
+
+        // Call before StartConnect. Device builds: dev PC LAN IP; Android Emulator: 10.0.2.2.
+        public void SetConnectionTarget(string host, int port)
+        {
+            _serverHost = string.IsNullOrWhiteSpace(host) ? "localhost" : host.Trim();
+            _serverPort = port;
+        }
 
         public event Action OnConnected;
         public event Action OnDisconnected;
@@ -53,7 +62,7 @@ namespace MH.Network
                 _clientStarted = true;
             }
 
-            _client.Connect("localhost", 9050, "SomeConnectionKey");
+            _client.Connect(_serverHost, _serverPort, "SomeConnectionKey");
             Debug.Log("Connecting to server...");
         }
 

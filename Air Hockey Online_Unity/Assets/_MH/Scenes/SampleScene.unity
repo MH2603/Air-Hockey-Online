@@ -494,6 +494,8 @@ MonoBehaviour:
     type: 3}
   _uiManager: {fileID: 1735307460680370635, guid: 8d305ef5b1fb54bfdb727772272211df,
     type: 3}
+  _serverHost: 192.168.0.109
+  _serverPort: 9050
 --- !u!4 &1286025975
 Transform:
   m_ObjectHideFlags: 0

@@ -27,20 +27,20 @@ namespace MH.GameLogic{
         public float GoalWidth = 4.5f;
 
         // OBJECTS — puck / paddle circle radii (1 = reference scale in design notes).
-        public float PuckRadius = 1f;
-        public float PaddleRadius = 2.5f;
+        public float PuckRadius = 0.5f;
+        public float PaddleRadius = 1f;
 
         // WALLS — outer boundary wall thickness for puck collision (AABB depth).
-        public float WallThickness = 0.5f;
+        public float WallThickness = 2f;
 
         // PHYSICS — elasticity e for puck bounces; paddle influence f (blend of paddle velocity after hit).
         public float Bounciness     = 0.95f;
         public float f = 0.5f;
 
         // SPEEDS — puck min/max after collision; paddle max speed and position-follow gain (target − position).
-        public float MinPuckSpeed = 0.5f;
-        public float MaxPuckSpeed = 50f;
-        public float PaddleMaxSpeed = 28f;
-        public float PaddlePositionFollow = 12f;
+        public float MinPuckSpeed = 0.1f;
+        public float MaxPuckSpeed = 30f;
+        public float PaddleMaxSpeed = 100f;
+        public float PaddlePositionFollow = 50f;
     }
 }

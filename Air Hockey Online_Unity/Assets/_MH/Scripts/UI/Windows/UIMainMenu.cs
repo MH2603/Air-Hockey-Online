@@ -46,7 +46,11 @@ namespace MH.UI
         protected virtual void OnStartClicked()
         {
             if (_startMatchmakingOnClick)
-                GameRunner.Instance?.RequestMatchmaking();
+            {
+                // UI flow: go to lobby first (no immediate connect).
+                UIManager.Instance?.Hide<UIMainMenu>();
+                UIManager.Instance?.Show<UILobby>();
+            }
         }
     }
 }
