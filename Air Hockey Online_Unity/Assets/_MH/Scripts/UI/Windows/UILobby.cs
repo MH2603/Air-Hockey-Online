@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using MH;
 using MH.GameLogic;
 using MH.Network;
 using TMPro;
@@ -20,6 +21,9 @@ namespace MH.UI
         [SerializeField] private TMP_Text _findHostLabel;
         [SerializeField] private float _listenSeconds = 1.5f;
 
+        [Header("Host")]
+        [SerializeField] private Button _createHostButton;
+
         [Header("List")]
         [Tooltip("Optional. If not set, a ScrollView is built at runtime under ScrollRoot.")]
         [SerializeField] private Transform _listContent;
@@ -30,6 +34,7 @@ namespace MH.UI
         private LanHostDiscovery _discovery;
         private readonly List<UIHostIPItem> _spawned = new();
         private bool _isFinding;
+        private bool _hostWaiting;
 
         private void Awake()
         {
@@ -43,6 +48,8 @@ namespace MH.UI
 
             if (_findHostButton != null)
                 _findHostButton.onClick.AddListener(OnFindHostClicked);
+            if (_createHostButton != null)
+                _createHostButton.onClick.AddListener(OnCreateHostClicked);
             if (_backButton != null)
                 _backButton.onClick.AddListener(OnBackClicked);
 
@@ -59,6 +66,8 @@ namespace MH.UI
             // Cleanup: unbind + dispose discovery.
             if (_findHostButton != null)
                 _findHostButton.onClick.RemoveListener(OnFindHostClicked);
+            if (_createHostButton != null)
+                _createHostButton.onClick.RemoveListener(OnCreateHostClicked);
             if (_backButton != null)
                 _backButton.onClick.RemoveListener(OnBackClicked);
 
@@ -76,15 +85,49 @@ namespace MH.UI
             if (_titleText != null && string.IsNullOrWhiteSpace(_titleText.text))
                 _titleText.text = "Lobby";
 
-            RefreshList();
+            if (GameRunner.Instance == null ||
+                GameRunner.Instance.GameState != EGameState.WaitingForGuest)
+                _hostWaiting = false;
+
+            if (!_hostWaiting)
+                RefreshList();
+            ApplyHostingLobbyVisual();
             base.Show();
         }
 
         private void OnBackClicked()
         {
+            _hostWaiting = false;
+            ApplyHostingLobbyVisual();
+            GameRunner.Instance?.StopHosting();
+
             // UI flow: return to main menu.
             UIManager.Instance?.Hide<UILobby>();
             UIManager.Instance?.Show<UIMainMenu>();
+        }
+
+        private void OnCreateHostClicked()
+        {
+            if (GameRunner.Instance == null)
+                return;
+
+            if (!GameRunner.Instance.StartHosting())
+                return;
+
+            _hostWaiting = true;
+            ApplyHostingLobbyVisual();
+        }
+
+        private void ApplyHostingLobbyVisual()
+        {
+            if (_titleText != null)
+                _titleText.text = _hostWaiting ? "Waiting for opponent…" : "Lobby";
+
+            if (_createHostButton != null)
+                _createHostButton.interactable = !_hostWaiting;
+
+            if (_findHostButton != null)
+                _findHostButton.interactable = !_hostWaiting;
         }
 
         private async void OnFindHostClicked()

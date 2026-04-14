@@ -29,6 +29,8 @@ namespace MH.Network
         public event Action OnConnected;
         public event Action OnDisconnected;
 
+        public event Action<int>? OnClientDisconnected;
+
         public void Init()
         {
             _listener = new EventBasedNetListener();
@@ -71,13 +73,24 @@ namespace MH.Network
             _client?.PollEvents();
         }
 
-        public void Send<TPacket>(TPacket packet) where TPacket : INetPacket
+        public void SendToServer<TPacket>(TPacket packet) where TPacket : INetPacket
         {
             if (_client == null || _client.FirstPeer == null || _client.FirstPeer.ConnectionState != ConnectionState.Connected)
             {
                 Debug.LogWarning("Cannot send packet: not connected to server.");
                 return;
             }
+
+            SendPacket(_client.FirstPeer.Id, packet);
+        }
+
+        public void SendPacket<TPacket>(int peerId, TPacket packet) where TPacket : INetPacket
+        {
+            if (_client == null || _client.FirstPeer == null || _client.FirstPeer.ConnectionState != ConnectionState.Connected)
+                return;
+
+            if (_client.FirstPeer.Id != peerId)
+                return;
 
             _writer.Reset();
             packet.Serialize(_writer);
@@ -124,6 +137,7 @@ namespace MH.Network
         {
             Debug.Log($"Disconnected from server: {info.Reason}");
             OnDisconnected?.Invoke();
+            OnClientDisconnected?.Invoke(peer.Id);
         }
     }
 }

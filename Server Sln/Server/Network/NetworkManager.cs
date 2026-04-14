@@ -15,9 +15,9 @@ namespace MH.Network
         private EventBasedNetListener _listener;
         private Dictionary<int, NetPeer> _connectedPeers = new Dictionary<int, NetPeer>();
 
-        public Action<int> OnClientConnected;
-        public Action<int> OnClientDisconnected;
-        public Action<int, NetPacketReader> OnReceived;
+        public event Action<int>? OnClientConnected;
+        public event Action<int>? OnClientDisconnected;
+        public Action<int, NetPacketReader>? OnReceived;
 
         public void Init()
         {

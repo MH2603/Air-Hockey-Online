@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using MH.Network;
 
 namespace MH.GameLogic
@@ -5,18 +7,38 @@ namespace MH.GameLogic
     public class MatchmakingHandler : IPacketHandler, IDisposable
     {
         private readonly PacketDispatcher _dispatcher;
-        private readonly NetworkManager _network;
+        private readonly INetworkManager _network;
         private readonly List<int> _waiting = new();
         private int _nextMatchId = 1;
 
-        public event Action<int, int, int> OnMatchCreated; // (matchId, peerBottom, peerTop)
+        /// <summary>Host is always bottom (player 0): (matchId, HostLocalPeerId, remotePeerTop).</summary>
+        public event Action<int, int, int>? OnMatchCreated;
 
-        public MatchmakingHandler(PacketDispatcher dispatcher, NetworkManager network)
+        private bool _hostAwaitingGuest;
+
+        public MatchmakingHandler(PacketDispatcher dispatcher, INetworkManager network)
         {
             _dispatcher = dispatcher;
             _network = network;
             dispatcher.RegisterHandler<c2s_find_match>((int)EClientCmd.FindMatch, this);
-            network.OnClientDisconnected += OnClientDisconnected;
+            _network.OnClientDisconnected += OnClientDisconnected;
+        }
+
+        /// <summary>Listen-server mode: first remote <see cref="EClientCmd.FindMatch"/> pairs with the local host (bottom player).</summary>
+        public void BeginHosting()
+        {
+            lock (_waiting)
+            {
+                _hostAwaitingGuest = true;
+            }
+        }
+
+        public void CancelHosting()
+        {
+            lock (_waiting)
+            {
+                _hostAwaitingGuest = false;
+            }
         }
 
         public void Dispose()
@@ -32,6 +54,15 @@ namespace MH.GameLogic
 
             lock (_waiting)
             {
+                if (_hostAwaitingGuest)
+                {
+                    _hostAwaitingGuest = false;
+                    var matchId = _nextMatchId++;
+                    _network.SendPacket(fromId, new s2c_match_found { MatchId = matchId, LocalPlayerIndex = 1 });
+                    OnMatchCreated?.Invoke(matchId, NetworkConstants.HostLocalPeerId, fromId);
+                    return;
+                }
+
                 if (_waiting.Count > 0)
                 {
                     var other = _waiting[0];
@@ -40,7 +71,6 @@ namespace MH.GameLogic
                     _network.SendPacket(other, new s2c_match_found { MatchId = matchId, LocalPlayerIndex = 0 });
                     _network.SendPacket(fromId, new s2c_match_found { MatchId = matchId, LocalPlayerIndex = 1 });
 
-                    // Index 0 is treated as the bottom player (playerId 0) on the authoritative server match.
                     OnMatchCreated?.Invoke(matchId, other, fromId);
                 }
                 else

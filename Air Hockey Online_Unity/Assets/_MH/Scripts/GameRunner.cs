@@ -11,9 +11,13 @@ namespace MH.GameLogic
 {
     public class GameRunner : MonoSingleton<GameRunner>, IPacketHandler
     {
+        #region FIELDS
+
         [SerializeField] private BoardConfig _config;
 
         private ClientNetwork _clientNetwork;
+        private HostGameSession _hostSession;
+        private bool _isHost;
         private Match _currentMatch;
         private bool _isMouseDown;
         private EGameState _gameState;
@@ -24,12 +28,20 @@ namespace MH.GameLogic
         public Match CurrentMatch => _currentMatch;
         public EGameState GameState => _gameState;
 
+        public bool IsHosting => _hostSession != null;
+
+        #endregion
+
+        #region UNITY METHODS
+
         void Update()
         {
+            _hostSession?.Poll();
+
             if (_gameState != EGameState.Playing || _currentMatch == null)
                 return;
 
-            // Input (client) -> send target mouse world position to server.
+            // Input: guest sends to server; host applies directly to authoritative simulation.
             if (Input.GetMouseButtonDown(0))
             {
                 _isMouseDown = true;
@@ -39,7 +51,6 @@ namespace MH.GameLogic
                 _isMouseDown = false;
             }
 
-            // We always send a target point. When mouse is not down, use current paddle position (=> near-zero velocity on server).
             var localPlayer = _currentMatch.GetPlayer(_localPlayerIndex);
             if (localPlayer == null)
                 return;
@@ -55,8 +66,45 @@ namespace MH.GameLogic
                 target = localPlayer.Paddle.GetComponent<Root2D>().Position;
             }
 
-            _clientNetwork?.Send(new c2s_mouse_pos { X = target.x, Y = target.y });
+            if (_isHost)
+                _hostSession?.ApplyHostInput(target.x, target.y);
+            else
+                _clientNetwork?.SendToServer(new c2s_mouse_pos { X = target.x, Y = target.y });
         }
+
+        void FixedUpdate()
+        {
+            if (_hostSession != null)
+                _hostSession.TickSimulation(Time.fixedDeltaTime);
+        }
+
+        protected override void OnDestroy()
+        {
+            StopHosting();
+
+            if (_clientNetwork != null)
+            {
+                _clientNetwork.Dispatcher.UnregisterHandler((int)EServerCmd.MatchFound, this);
+                _clientNetwork.Dispatcher.UnregisterHandler((int)EServerCmd.BoardStatus, this);
+                _clientNetwork.Dispatcher.UnregisterHandler((int)EServerCmd.MatchResult, this);
+                _clientNetwork.OnConnected -= OnServerConnected;
+                _clientNetwork.OnDisconnected -= OnServerDisconnected;
+            }
+
+            // Restore camera rotation if we changed it (client-only cleanup).
+            if (_hasDefaultMainCameraRotation)
+            {
+                var cam = Camera.main;
+                if (cam != null)
+                    cam.transform.rotation = _defaultMainCameraRotation;
+            }
+
+            base.OnDestroy();
+        }
+
+        #endregion
+
+        #region API
 
         public void Init(ClientNetwork clientNetwork)
         {
@@ -69,6 +117,45 @@ namespace MH.GameLogic
 
             _gameState = EGameState.MainMenu;
             Application.targetFrameRate = 60;
+            Time.fixedDeltaTime = 1f / 60f;
+        }
+
+        /// <summary>Listen on game port and wait for one guest (LAN). Host is always bottom player (index 0).</summary>
+        public bool StartHosting()
+        {
+            if (_gameState == EGameState.Connecting || _gameState == EGameState.Matching ||
+                _gameState == EGameState.WaitingForGuest || _gameState == EGameState.Playing)
+                return false;
+
+            StopHosting();
+
+            var session = new HostGameSession(_config, OnHostMatchReady, OnHostMatchResultFromSession);
+            if (!session.TryListen())
+            {
+                ShowHostListenFailed();
+                return false;
+            }
+
+            session.BeginWaitingForGuest();
+            _hostSession = session;
+            _isHost = true;
+            _gameState = EGameState.WaitingForGuest;
+
+            // Stay on UILobby so the player can cancel with Back; lobby script switches title / buttons.
+            return true;
+        }
+
+        public void StopHosting()
+        {
+            if (_hostSession == null)
+                return;
+
+            _hostSession.Dispose();
+            _hostSession = null;
+            _isHost = false;
+
+            if (_gameState == EGameState.WaitingForGuest)
+                _gameState = EGameState.MainMenu;
         }
 
         public void RequestMatchmaking()
@@ -79,7 +166,8 @@ namespace MH.GameLogic
         public void ConnectAndRequestMatchmaking(string host, int port)
         {
             // Validation: prevent double-connect / double-matchmaking.
-            if (_gameState == EGameState.Connecting || _gameState == EGameState.Matching)
+            if (_gameState == EGameState.Connecting || _gameState == EGameState.Matching ||
+                _gameState == EGameState.WaitingForGuest || _isHost)
                 return;
 
             // Initialization: if provided, override the current connection target.
@@ -122,6 +210,9 @@ namespace MH.GameLogic
                 }
                 case EServerCmd.BoardStatus:
                 {
+                    if (_isHost)
+                        return;
+
                     if (_gameState != EGameState.Playing || _currentMatch == null)
                         return;
 
@@ -136,13 +227,27 @@ namespace MH.GameLogic
             }
         }
 
+        #endregion
+
+        #region EVENT_HANDLER
+
+        private void OnHostMatchReady(int matchId, Match authoritativeMatch, int localPlayerIndex)
+        {
+            BeginLocalMatchAsHost(authoritativeMatch, matchId, localPlayerIndex);
+        }
+
+        private void OnHostMatchResultFromSession(s2c_match_result result)
+        {
+            HandleMatchResult(result);
+        }
+
         private void OnServerConnected()
         {
             if (_gameState != EGameState.Connecting)
                 return;
 
             _gameState = EGameState.Matching;
-            _clientNetwork.Send(new c2s_find_match());
+            _clientNetwork.SendToServer(new c2s_find_match());
         }
 
         private void OnServerDisconnected()
@@ -157,11 +262,48 @@ namespace MH.GameLogic
             ShowNotifyAndBackToMainMenu("Matchmaking failed", "Could not connect to server.");
         }
 
+        #endregion
+
+        private void ShowHostListenFailed()
+        {
+            var ui = UIManager.Instance;
+            if (ui != null && ui.TryGet<UINotifyPopup>(out var popup))
+            {
+                popup.Show(
+                    title: "Cannot start host",
+                    content: "UDP port may be in use. Stop other game servers or choose another machine.",
+                    yesLabel: "OK",
+                    onYes: () =>
+                    {
+                        ui.Hide<UINotifyPopup>();
+                        ui.Show<UIMainMenu>();
+                    });
+                ui.Show<UINotifyPopup>();
+            }
+            else
+            {
+                Debug.LogError("Cannot bind host port (9050).");
+            }
+        }
+
         private void BeginLocalMatch(int matchId, int localPlayerIndex)
         {
             Debug.Log($"Match started: id={matchId}, localPlayer={localPlayerIndex}");
 
             _currentMatch = new Match(0, 1, _config);
+            FinishMatchSetup(matchId, localPlayerIndex);
+        }
+
+        private void BeginLocalMatchAsHost(Match authoritativeMatch, int matchId, int localPlayerIndex)
+        {
+            Debug.Log($"Host match started: id={matchId}, localPlayer={localPlayerIndex}");
+
+            _currentMatch = authoritativeMatch;
+            FinishMatchSetup(matchId, localPlayerIndex);
+        }
+
+        private void FinishMatchSetup(int matchId, int localPlayerIndex)
+        {
             var matchView = GetComponent<MatchView2D>() ?? gameObject.AddComponent<MatchView2D>();
             matchView.SetMatch(_currentMatch);
             _localPlayerIndex = localPlayerIndex;
@@ -170,6 +312,7 @@ namespace MH.GameLogic
 
             var ui = UIManager.Instance;
             ui?.Hide<UILoading>();
+            ui?.Hide<UILobby>();
         }
 
         private void HandleMatchResult(s2c_match_result result)
@@ -208,6 +351,8 @@ namespace MH.GameLogic
 
         private void BackToMainMenuInternal()
         {
+            StopHosting();
+
             // Cleanup: clear local match visuals/state.
             var matchView = GetComponent<MatchView2D>();
             if (matchView != null)
@@ -270,28 +415,6 @@ namespace MH.GameLogic
             p1.Paddle.GetComponent<Root2D>().Position = new CustomVector2(status.Paddle1X, status.Paddle1Y);
         }
 
-        protected override void OnDestroy()
-        {
-            if (_clientNetwork != null)
-            {
-                _clientNetwork.Dispatcher.UnregisterHandler((int)EServerCmd.MatchFound, this);
-                _clientNetwork.Dispatcher.UnregisterHandler((int)EServerCmd.BoardStatus, this);
-                _clientNetwork.Dispatcher.UnregisterHandler((int)EServerCmd.MatchResult, this);
-                _clientNetwork.OnConnected -= OnServerConnected;
-                _clientNetwork.OnDisconnected -= OnServerDisconnected;
-            }
-
-            // Restore camera rotation if we changed it (client-only cleanup).
-            if (_hasDefaultMainCameraRotation)
-            {
-                var cam = Camera.main;
-                if (cam != null)
-                    cam.transform.rotation = _defaultMainCameraRotation;
-            }
-
-            base.OnDestroy();
-        }
-
         #region Editor Methods
 
         [Button]
@@ -308,7 +431,7 @@ namespace MH.GameLogic
                 X = mousePos.x,
                 Y = mousePos.y
             };
-            _clientNetwork?.Send(packet);
+            _clientNetwork?.SendToServer(packet);
         }
 
         #endregion

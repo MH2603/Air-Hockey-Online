@@ -15,14 +15,15 @@ LiteNetLib **must be polled** regularly so connection events and incoming data a
 
 ### `INetworkManager`
 
-Defines a thin hook for the **receive pipeline**:
+Defines the **receive pipeline** plus shared **send / disconnect** hooks used by match code:
 
-- `RegisterReceivedEvent(Action<int, NetPacketReader> callback)` — subscribe to incoming payloads.
-- `UnregisterHandler(Action<int, NetPacketReader> callback)` — unsubscribe.
+- `RegisterReceivedEvent` / `UnregisterHandler` — subscribe to incoming payloads (first `int` in the buffer is the command id for `PacketDispatcher`).
+- `SendPacket<T>(int peerId, T packet)` — server: send to a connected peer; client: only sends when `peerId` matches the single server connection.
+- `OnClientDisconnected` — raised with the LiteNetLib peer id when that peer disconnects (server: any client; client: the server connection).
 
 The `int` is the **peer id** (LiteNetLib’s id for the connection). The `NetPacketReader` is positioned at the start of the **application payload** for that message.
 
-This interface lets game code stay agnostic of whether the implementation is a dedicated server `NetManager` or something else.
+Implementations include the headless **`NetworkManager`**, Unity **`UnityHostNetwork`**, and **`ClientNetwork`** (guest).
 
 ### `PacketDispatcher`
 
@@ -76,7 +77,13 @@ The client is a **thin LiteNetLib client** wrapper:
 | **PollEvents** | Must be called every frame (documented on the method; used from `Bootstrap`). |
 | **Send&lt;TPacket&gt;** | Requires `INetPacket`, serializes with `packet.Serialize(_writer)`, sends on **`FirstPeer`** with **`DeliveryMethod.ReliableOrdered`**. Guards if not connected. |
 
-So **sending** uses the same `INetPacket` types as the server (e.g. `c2s_mouse_pos` from `Bootstrap` on click). **Receiving** on the client is **not** yet routed through `PacketDispatcher` / `INetworkManager` — it is still demo logging unless you replace that handler.
+So **sending** uses the same `INetPacket` types as the server (e.g. `c2s_mouse_pos`). **Receiving** on the Unity client goes through `ClientNetwork` → `INetworkManager` → `PacketDispatcher` (see `GameRunner` packet handlers).
+
+## Unity listen-server (host)
+
+For LAN play without a separate headless process, Unity uses **`UnityHostNetwork`** (binds **UDP 9050**, same LAN discovery strings as the headless server) plus **`HostGameSession`**, which wires the same **`PacketDispatcher`**, **`MatchmakingHandler`**, and **`MatchSessionManager`** as `Server Sln/Server/Program.cs`. The host does **not** open a second LiteNetLib client to itself; the bottom player uses **`NetworkConstants.HostLocalPeerId`** and **`MatchSessionManager.ApplyHostBottomPaddleTarget`**. Remote guests still connect with **`ClientNetwork`** / **`GameRunner`** as clients.
+
+The **headless Server** console app remains available for testing without Unity.
 
 ## Summary
 
@@ -85,6 +92,5 @@ So **sending** uses the same `INetPacket` types as the server (e.g. `c2s_mouse_p
 | LiteNetLib | UDP + connections + poll-driven I/O |
 | `INetworkManager` | Inject receive callbacks with `(peerId, reader)` |
 | `PacketDispatcher` | `int` command id → deserialize `INetPacket` → `IPacketHandler`s |
-| `NetworkClient` | Connect, poll, send typed packets; receive path is still ad hoc |
-
-To mirror the server’s dispatch on the client, you would implement `INetworkManager` (or adapt the listener) and construct a `PacketDispatcher` the same way, then replace the string `Debug.Log` receive handler with that pipeline.
+| `ClientNetwork` | Guest: connect, poll, send typed packets; receive via dispatcher |
+| `UnityHostNetwork` + `HostGameSession` | Host: listen on 9050, authoritative sim + LAN discovery |

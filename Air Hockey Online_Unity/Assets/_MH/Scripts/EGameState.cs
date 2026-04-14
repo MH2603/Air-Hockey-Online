@@ -6,6 +6,7 @@ namespace MH
         MainMenu,
         Connecting,
         Matching,
+        WaitingForGuest,
         Playing,
     }
 }
