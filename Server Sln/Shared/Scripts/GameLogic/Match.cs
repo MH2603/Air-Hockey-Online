@@ -93,6 +93,18 @@ namespace MH.GameLogic
             player.Paddle.GetComponent<MoveComponent>().SetVelocity(velocity);
         }
 
+        /// <summary> Same as server <c>ApplyMouseToPlayer</c>: target world point → follow velocity (clamped). </summary>
+        public void ApplyPaddleTargetFromWorld(int playerId, CustomVector2 targetWorld)
+        {
+            var player = GetPlayer(playerId);
+            if (player == null)
+                return;
+
+            var paddlePos = player.Paddle.GetComponent<Root2D>().Position;
+            var vel = (targetWorld - paddlePos) * _config.PaddlePositionFollow;
+            SetPaddleVelocity(playerId, vel);
+        }
+
         void RegisterPuckAgainstWallsAndHandlers()
         {
             _puck.Collider.OnCollision += HandlePuckCollision;

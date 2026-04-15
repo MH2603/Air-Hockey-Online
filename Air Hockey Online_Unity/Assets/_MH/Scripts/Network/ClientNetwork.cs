@@ -19,6 +19,18 @@ namespace MH.Network
 
         public PacketDispatcher Dispatcher => _dispatcher;
 
+        /// <summary>Smoothed round-trip time to the connected server peer (ms), or -1 if not connected.</summary>
+        public int ConnectedPeerRoundTripMs
+        {
+            get
+            {
+                var peer = _client?.FirstPeer;
+                if (peer == null || peer.ConnectionState != ConnectionState.Connected)
+                    return -1;
+                return peer.RoundTripTime;
+            }
+        }
+
         // Call before StartConnect. Device builds: dev PC LAN IP; Android Emulator: 10.0.2.2.
         public void SetConnectionTarget(string host, int port)
         {

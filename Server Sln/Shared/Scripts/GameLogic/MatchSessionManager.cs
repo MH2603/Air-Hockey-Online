@@ -90,14 +90,7 @@ namespace MH.GameLogic
 
         private void ApplyMouseToPlayer(Match match, int playerId, float x, float y)
         {
-            var player = match.GetPlayer(playerId);
-            if (player == null)
-                return;
-
-            var target = new CustomVector2(x, y);
-            var paddlePos = player.Paddle.GetComponent<Root2D>().Position;
-            var vel = (target - paddlePos) * _config.PaddlePositionFollow;
-            match.SetPaddleVelocity(playerId, vel);
+            match.ApplyPaddleTargetFromWorld(playerId, new CustomVector2(x, y));
         }
 
         public void TickAndBroadcast(float deltaTime)

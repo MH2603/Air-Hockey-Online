@@ -5,10 +5,12 @@ using UnityEngine;
 namespace MH.Editor
 {
     /// <summary>
-    /// Runtime overlay for simulation velocities (puck + paddles). Add to a scene object; optionally assign <see cref="GameRunner"/>.
+    /// Runtime overlay: FPS, server ping (when connected via <see cref="GameRunner"/>), and simulation velocities (puck + paddles). Add to a scene object; optionally assign <see cref="GameRunner"/>.
     /// </summary>
     public class UIDebug : MonoBehaviour
     {
+        const float FpsSampleSeconds = 0.5f;
+
         [SerializeField] GameRunner gameRunner;
         [SerializeField] bool visible = true;
         [SerializeField] int fontSize = 14;
@@ -19,18 +21,32 @@ namespace MH.Editor
         [SerializeField] int playerIdBottom = 0;
         [SerializeField] int playerIdTop = 1;
 
+        float _fpsAccum;
+        int _fpsFrameCount;
+        float _displayFps = -1f;
+
         void Awake()
         {
             if (gameRunner == null)
                 gameRunner = GameRunner.Instance;
         }
 
+        void Update()
+        {
+            // Rolling FPS over unscaled time so hitches while paused/timeScale=0 still read sensibly when unscaled.
+            _fpsAccum += Time.unscaledDeltaTime;
+            _fpsFrameCount++;
+            if (_fpsAccum >= FpsSampleSeconds)
+            {
+                _displayFps = _fpsFrameCount / _fpsAccum;
+                _fpsAccum = 0f;
+                _fpsFrameCount = 0;
+            }
+        }
+
         void OnGUI()
         {
             if (!visible) return;
-
-            var match = gameRunner != null ? gameRunner.CurrentMatch : null;
-            if (match == null) return;
 
             if (_style == null)
             {
@@ -42,11 +58,34 @@ namespace MH.Editor
                 };
             }
 
+            var match = gameRunner != null ? gameRunner.CurrentMatch : null;
+            int matchLineCount = 0;
+            if (match != null)
+            {
+                if (match.Puck != null) matchLineCount++;
+                if (match.GetPlayer(playerIdBottom)?.Paddle != null) matchLineCount++;
+                if (match.GetPlayer(playerIdTop)?.Paddle != null) matchLineCount++;
+            }
+
+            const int headerLineCount = 2;
             float line = Mathf.Max(_style.CalcHeight(new GUIContent("X"), 400f), _style.lineHeight);
-            var inner = new Rect(screenOffset.x + 6f, screenOffset.y + 6f, 400f, line * 4f);
+            int totalLines = headerLineCount + matchLineCount;
+            var inner = new Rect(screenOffset.x + 6f, screenOffset.y + 6f, 400f, line * totalLines);
             GUI.Box(new Rect(screenOffset.x, screenOffset.y, inner.width + 12f, inner.height + 12f), GUIContent.none);
 
             float y = inner.y;
+            string fpsText = _displayFps >= 0f ? $"{_displayFps:F0} FPS" : "FPS …";
+            GUI.Label(new Rect(inner.x, y, 800f, line), fpsText, _style);
+            y += line;
+
+            int pingMs = gameRunner != null ? gameRunner.ServerRoundTripPingMs : -1;
+            string pingText = pingMs >= 0 ? $"Ping {pingMs} ms" : "Ping —";
+            GUI.Label(new Rect(inner.x, y, 800f, line), pingText, _style);
+            y += line;
+
+            if (match == null)
+                return;
+
             DrawRow(_style, inner.x, ref y, line, "Puck", match.Puck);
             DrawPlayerRow(_style, inner.x, ref y, line, match, playerIdBottom);
             DrawPlayerRow(_style, inner.x, ref y, line, match, playerIdTop);

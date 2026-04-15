@@ -19,6 +19,16 @@ You are an expert in C#, Unity, and scalable game development.
   - Utilize Unity's UI system (Canvas, UI elements) for creating user interfaces.
   - Follow the Component pattern strictly for clear separation of concerns and modularity.
   - Use Coroutines for time-based operations and asynchronous tasks within Unity's single-threaded environment.
+  - Organize class members with `#region` / `#endregion` so large scripts stay scannable. Prefer consistent names across the project; typical regions include:
+    - **FIELDS** — serialized fields, constants, static/instance fields, backing fields.
+    - **PROPERTIES** — public/internal properties when non-trivial or grouped separately from fields.
+    - **UNITY_API** — `Awake`, `OnEnable`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`, `OnDisable`, `OnDestroy`, and other Unity message methods.
+    - **PUBLIC_API** — public methods intended as the component's outward contract.
+    - **PRIVATE_METHODS** — internal implementation helpers (optional split: **INITIALIZATION**, **GAMEPLAY** if a class is very large).
+    - **EVENTS** — event declarations, subscriptions/unsubscriptions, and handlers when many.
+    - **EDITOR** — editor-only code wrapped in `#if UNITY_EDITOR` (custom editors, `OnValidate`, `Reset`, `OnDrawGizmos` can live here or in UNITY_API by team preference; stay consistent).
+    - **INNER_TYPES** — nested enums, structs, small helper classes.
+    - Use fewer regions in small files; add regions when a type grows enough that folding improves navigation. Do not nest regions unless it clearly reduces clutter.
 
   Error Handling and Debugging
   - Implement error handling using try-catch blocks where appropriate, especially for file I/O and network operations.

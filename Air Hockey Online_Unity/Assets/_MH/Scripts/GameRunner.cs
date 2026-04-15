@@ -1,3 +1,4 @@
+using System;
 using MH;
 using MH.Common;
 using MH.Core;
@@ -19,16 +20,40 @@ namespace MH.GameLogic
         private HostGameSession _hostSession;
         private bool _isHost;
         private Match _currentMatch;
+        private int _activeMatchId;
         private bool _isMouseDown;
         private EGameState _gameState;
         private int _localPlayerIndex;
         private Quaternion _defaultMainCameraRotation;
         private bool _hasDefaultMainCameraRotation;
 
+        // Guest client prediction: local sim between server snapshots (host uses authoritative session only).
+        private readonly GuestPredictionService _guestPrediction = new GuestPredictionService();
+        private CustomVector2 _latestLocalTarget;
+        private bool _hasLatestLocalTarget;
+
+        [Header("Debug (guest prediction)")]
+        [Tooltip("Draw error segments (predicted → server) on snapshot; HUD shows magnitudes.")]
+        [SerializeField] private bool _showPredictionDebug;
+
+        private Vector3 _dbgPuckPred;
+        private Vector3 _dbgPuckServer;
+        private Vector3 _dbgPad0Pred;
+        private Vector3 _dbgPad0Server;
+        private Vector3 _dbgPad1Pred;
+        private Vector3 _dbgPad1Server;
+        private float _dbgPuckErrMag;
+        private float _dbgPad0ErrMag;
+        private float _dbgPad1ErrMag;
+        private bool _dbgHasSnapshotErrors;
+
         public Match CurrentMatch => _currentMatch;
         public EGameState GameState => _gameState;
 
         public bool IsHosting => _hostSession != null;
+
+        /// <summary>LiteNetLib RTT to the matchmaking/server peer (ms), or -1 when not connected.</summary>
+        public int ServerRoundTripPingMs => _clientNetwork?.ConnectedPeerRoundTripMs ?? -1;
 
         #endregion
 
@@ -69,13 +94,45 @@ namespace MH.GameLogic
             if (_isHost)
                 _hostSession?.ApplyHostInput(target.x, target.y);
             else
+            {
+                _latestLocalTarget = target;
+                _hasLatestLocalTarget = true;
                 _clientNetwork?.SendToServer(new c2s_mouse_pos { X = target.x, Y = target.y });
+            }
         }
 
         void FixedUpdate()
         {
             if (_hostSession != null)
                 _hostSession.TickSimulation(Time.fixedDeltaTime);
+            else
+                GuestPredictionFixedStep();
+        }
+
+        void OnDrawGizmos()
+        {
+            if (!_showPredictionDebug || !_dbgHasSnapshotErrors)
+                return;
+
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawLine(_dbgPuckPred, _dbgPuckServer);
+            Gizmos.color = new Color(1f, 0.5f, 0f);
+            Gizmos.DrawLine(_dbgPad0Pred, _dbgPad0Server);
+            Gizmos.color = new Color(0.5f, 0f, 1f);
+            Gizmos.DrawLine(_dbgPad1Pred, _dbgPad1Server);
+        }
+
+        void OnGUI()
+        {
+            if (!_showPredictionDebug || !_dbgHasSnapshotErrors || _isHost)
+                return;
+
+            var style = GUI.skin.box;
+            GUI.Box(
+                new Rect(8f, 8f, 280f, 72f),
+                $"Prediction vs server (last snapshot)\n" +
+                $"puck Δ {_dbgPuckErrMag:F3}  |  pad0 Δ {_dbgPad0ErrMag:F3}  |  pad1 Δ {_dbgPad1ErrMag:F3}",
+                style);
         }
 
         protected override void OnDestroy()
@@ -216,7 +273,11 @@ namespace MH.GameLogic
                     if (_gameState != EGameState.Playing || _currentMatch == null)
                         return;
 
-                    ApplyBoardStatus((s2c_board_status)packet);
+                    _guestPrediction.ApplyBoardStatus(
+                        _currentMatch,
+                        _activeMatchId,
+                        (s2c_board_status)packet,
+                        beforeReconcile: _showPredictionDebug ? CaptureSnapshotPredictionErrors : null);
                     break;
                 }
                 case EServerCmd.MatchResult:
@@ -306,7 +367,21 @@ namespace MH.GameLogic
         {
             var matchView = GetComponent<MatchView2D>() ?? gameObject.AddComponent<MatchView2D>();
             matchView.SetMatch(_currentMatch);
+            _activeMatchId = matchId;
             _localPlayerIndex = localPlayerIndex;
+            var initialLocal = _currentMatch.GetPlayer(localPlayerIndex);
+            if (initialLocal != null)
+            {
+                _latestLocalTarget = initialLocal.Paddle.GetComponent<Root2D>().Position;
+                _hasLatestLocalTarget = true;
+            }
+            else
+            {
+                _hasLatestLocalTarget = false;
+            }
+
+            _guestPrediction.Reset();
+            _dbgHasSnapshotErrors = false;
             ApplyClientViewForLocalPlayer(_localPlayerIndex);
             _gameState = EGameState.Playing;
 
@@ -358,6 +433,10 @@ namespace MH.GameLogic
             if (matchView != null)
                 matchView.SetMatch(null);
             _currentMatch = null;
+            _activeMatchId = 0;
+            _hasLatestLocalTarget = false;
+            _guestPrediction.Reset();
+            _dbgHasSnapshotErrors = false;
             _gameState = EGameState.MainMenu;
 
             // Restore camera rotation (client-only).
@@ -399,20 +478,43 @@ namespace MH.GameLogic
                 : _defaultMainCameraRotation;
         }
 
-        private void ApplyBoardStatus(s2c_board_status status)
+        private void GuestPredictionFixedStep()
         {
-            // Validation
-            var p0 = _currentMatch.GetPlayer(0);
-            var p1 = _currentMatch.GetPlayer(1);
-            if (p0 == null || p1 == null || _currentMatch.Puck == null)
+            if (_isHost || _gameState != EGameState.Playing || _currentMatch == null)
                 return;
 
-            // Apply authoritative transforms (server owns physics).
-            _currentMatch.Puck.GetComponent<Root2D>().Position = new CustomVector2(status.PuckX, status.PuckY);
-            _currentMatch.Puck.GetComponent<MoveComponent>().SetVelocity(new CustomVector2(status.PuckVelX, status.PuckVelY));
+            _guestPrediction.FixedStep(
+                _currentMatch,
+                _localPlayerIndex,
+                _hasLatestLocalTarget,
+                _latestLocalTarget,
+                Time.fixedDeltaTime);
+        }
 
-            p0.Paddle.GetComponent<Root2D>().Position = new CustomVector2(status.Paddle0X, status.Paddle0Y);
-            p1.Paddle.GetComponent<Root2D>().Position = new CustomVector2(status.Paddle1X, status.Paddle1Y);
+        private void CaptureSnapshotPredictionErrors(s2c_board_status s)
+        {
+            var puckRoot = _currentMatch.Puck.GetComponent<Root2D>();
+            var p0 = _currentMatch.GetPlayer(0);
+            var p1 = _currentMatch.GetPlayer(1);
+            if (puckRoot == null || p0 == null || p1 == null)
+                return;
+
+            var r0 = p0.Paddle.GetComponent<Root2D>();
+            var r1 = p1.Paddle.GetComponent<Root2D>();
+            if (r0 == null || r1 == null)
+                return;
+
+            _dbgPuckPred = new Vector3(puckRoot.Position.x, puckRoot.Position.y, 0f);
+            _dbgPuckServer = new Vector3(s.PuckX, s.PuckY, 0f);
+            _dbgPad0Pred = new Vector3(r0.Position.x, r0.Position.y, 0f);
+            _dbgPad0Server = new Vector3(s.Paddle0X, s.Paddle0Y, 0f);
+            _dbgPad1Pred = new Vector3(r1.Position.x, r1.Position.y, 0f);
+            _dbgPad1Server = new Vector3(s.Paddle1X, s.Paddle1Y, 0f);
+
+            _dbgPuckErrMag = CustomVector2.Distance(puckRoot.Position, new CustomVector2(s.PuckX, s.PuckY));
+            _dbgPad0ErrMag = CustomVector2.Distance(r0.Position, new CustomVector2(s.Paddle0X, s.Paddle0Y));
+            _dbgPad1ErrMag = CustomVector2.Distance(r1.Position, new CustomVector2(s.Paddle1X, s.Paddle1Y));
+            _dbgHasSnapshotErrors = true;
         }
 
         #region Editor Methods

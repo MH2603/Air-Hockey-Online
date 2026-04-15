@@ -58,6 +58,7 @@ MonoBehaviour:
     MaxPuckSpeed: 30
     PaddleMaxSpeed: 100
     PaddlePositionFollow: 50
+  _showPredictionDebug: 1
 --- !u!114 &6195782703025212765
 MonoBehaviour:
   m_ObjectHideFlags: 0

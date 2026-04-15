@@ -11,9 +11,9 @@ This document describes how an online match is synchronized between **Unity clie
 ## High-level responsibilities
 
 - **Client (Unity)**
-  - Creates a local `Match` only for **rendering** (views bind to entities).
+  - Creates a local `Match` for **rendering** and, on **guest** clients, for **prediction** (`Match.Tick` at 60 Hz between snapshots; see [CLIENT_PREDICTION_IMPLEMENTATION_PLAN.md](CLIENT_PREDICTION_IMPLEMENTATION_PLAN.md)).
   - Sends `c2s_mouse_pos` as player input (target point in world space).
-  - Applies `s2c_board_status` snapshots to puck/paddle transforms (no local physics tick).
+  - On each `s2c_board_status`, **reconciles** toward server puck/paddle state (host uses authoritative sim only).
 
 - **Server (.NET headless)**
   - Creates a server-side `Match` when matchmaking pairs 2 peers.
@@ -92,19 +92,20 @@ This keeps client input simple and pushes all movement constraints to the server
 
 ## Client-side application of snapshots
 
-When receiving `s2c_board_status`, the client applies:
+**Dedicated client (guest)** — see [CLIENT_PREDICTION_IMPLEMENTATION_PLAN.md](CLIENT_PREDICTION_IMPLEMENTATION_PLAN.md):
 
-- Puck:
-  - `Root2D.Position = (PuckX, PuckY)`
-  - `MoveComponent.SetVelocity = (PuckVelX, PuckVelY)`
-- Paddles:
-  - player0 paddle `Root2D.Position = (Paddle0X, Paddle0Y)`
-  - player1 paddle `Root2D.Position = (Paddle1X, Paddle1Y)`
+- Runs a local `Match` at **60 Hz** (`Time.fixedDeltaTime`) between packets: same `Match.Tick` / `ApplyPaddleTargetFromWorld` path as the server for **prediction**.
+- On each `s2c_board_status`, **reconciles** predicted state toward the server (soft blend under a distance threshold, else snap). Host / listen-server uses the authoritative `Match` only (no snapshot apply loopback).
 
-The local `Match` exists primarily so `MatchView2D` can bind and render entities.
+**Rough data flow on guest**
+
+- Puck: predicted position/velocity between snapshots; blended toward `PuckX/Y`, `PuckVelX/Y` on receive.
+- Paddles: local player from live input; remote player driven toward last snapshot paddle position each predicted tick (no opponent input relay); positions corrected on receive.
+
+The local `Match` drives `MatchView2D` and guest prediction.
 
 ## Notes / follow-ups
 
-- This is a **snapshot sync** (no client prediction yet). If you need smoother motion, add interpolation buffers on the client or add client-side prediction + reconciliation.
+- **Client prediction** for guests is implemented in Unity `GameRunner` (debug gizmo/HUD: `Show Prediction Debug`). Further work (rewind–replay, tick in protocol) is listed in [CLIENT_PREDICTION_IMPLEMENTATION_PLAN.md](CLIENT_PREDICTION_IMPLEMENTATION_PLAN.md).
 - Add scoring / goals by extending `s2c_board_status` (or adding separate events) once goal detection is implemented server-side.
 
