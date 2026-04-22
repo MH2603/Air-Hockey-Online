@@ -14,7 +14,9 @@ namespace MH.GameLogic
     {
         #region FIELDS
 
-        [SerializeField] private BoardConfig _config;
+        // Match/board tuning: assign a Match Config asset (Create: Assets → Create → MH → Game Logic → Match Config).
+        [SerializeField] private MatchConfig _matchConfig;
+        private BoardConfig _defaultBoard;
 
         private ClientNetwork _clientNetwork;
         private HostGameSession _hostSession;
@@ -28,7 +30,8 @@ namespace MH.GameLogic
         private bool _hasDefaultMainCameraRotation;
 
         // Guest client prediction: local sim between server snapshots (host uses authoritative session only).
-        private readonly GuestPredictionService _guestPrediction = new GuestPredictionService();
+        [SerializeField] private GuestPredictionConfig _guestPredictionConfig;
+        private GuestPredictionService _guestPrediction = new GuestPredictionService();
         private CustomVector2 _latestLocalTarget;
         private bool _hasLatestLocalTarget;
 
@@ -47,6 +50,9 @@ namespace MH.GameLogic
         private float _dbgPad1ErrMag;
         private bool _dbgHasSnapshotErrors;
 
+        /// <summary>When true (e.g. editor test match), HUD reads scores from the local <see cref="Match"/>.</summary>
+        bool _syncScoresFromLocalMatch;
+
         public Match CurrentMatch => _currentMatch;
         public EGameState GameState => _gameState;
 
@@ -55,6 +61,20 @@ namespace MH.GameLogic
         /// <summary>LiteNetLib RTT to the matchmaking/server peer (ms), or -1 when not connected.</summary>
         public int ServerRoundTripPingMs => _clientNetwork?.ConnectedPeerRoundTripMs ?? -1;
 
+        private BoardConfig BoardConfigForMatch => _matchConfig != null ? _matchConfig.Board : DefaultBoard;
+
+        private BoardConfig DefaultBoard
+        {
+            get
+            {
+                if (_defaultBoard != null)
+                    return _defaultBoard;
+                Debug.LogWarning("GameRunner: MatchConfig is not assigned; using default BoardConfig values.");
+                _defaultBoard = new BoardConfig();
+                return _defaultBoard;
+            }
+        }
+
         #endregion
 
         #region UNITY METHODS
@@ -62,6 +82,9 @@ namespace MH.GameLogic
         void Update()
         {
             _hostSession?.Poll();
+
+            if (_gameState == EGameState.Playing && _currentMatch != null && _syncScoresFromLocalMatch)
+                PushScoresToHud(_currentMatch.Score0, _currentMatch.Score1);
 
             if (_gameState != EGameState.Playing || _currentMatch == null)
                 return;
@@ -75,6 +98,9 @@ namespace MH.GameLogic
             {
                 _isMouseDown = false;
             }
+
+            if (IsGameplayInputFrozen())
+                return;
 
             var localPlayer = _currentMatch.GetPlayer(_localPlayerIndex);
             if (localPlayer == null)
@@ -144,6 +170,7 @@ namespace MH.GameLogic
                 _clientNetwork.Dispatcher.UnregisterHandler((int)EServerCmd.MatchFound, this);
                 _clientNetwork.Dispatcher.UnregisterHandler((int)EServerCmd.BoardStatus, this);
                 _clientNetwork.Dispatcher.UnregisterHandler((int)EServerCmd.MatchResult, this);
+                _clientNetwork.Dispatcher.UnregisterHandler((int)EServerCmd.GoalScored, this);
                 _clientNetwork.OnConnected -= OnServerConnected;
                 _clientNetwork.OnDisconnected -= OnServerDisconnected;
             }
@@ -169,12 +196,15 @@ namespace MH.GameLogic
             _clientNetwork.Dispatcher.RegisterHandler<s2c_match_found>((int)EServerCmd.MatchFound, this);
             _clientNetwork.Dispatcher.RegisterHandler<s2c_board_status>((int)EServerCmd.BoardStatus, this);
             _clientNetwork.Dispatcher.RegisterHandler<s2c_match_result>((int)EServerCmd.MatchResult, this);
+            _clientNetwork.Dispatcher.RegisterHandler<s2c_goal_scored>((int)EServerCmd.GoalScored, this);
             _clientNetwork.OnConnected += OnServerConnected;
             _clientNetwork.OnDisconnected += OnServerDisconnected;
 
             _gameState = EGameState.MainMenu;
             Application.targetFrameRate = 60;
             Time.fixedDeltaTime = 1f / 60f;
+
+            _guestPrediction = new GuestPredictionService(_guestPredictionConfig);
         }
 
         /// <summary>Listen on game port and wait for one guest (LAN). Host is always bottom player (index 0).</summary>
@@ -186,7 +216,7 @@ namespace MH.GameLogic
 
             StopHosting();
 
-            var session = new HostGameSession(_config, OnHostMatchReady, OnHostMatchResultFromSession);
+            var session = new HostGameSession(BoardConfigForMatch, OnHostMatchReady, OnHostMatchResultFromSession, OnHostGoalScoredFromSession);
             if (!session.TryListen())
             {
                 ShowHostListenFailed();
@@ -273,11 +303,18 @@ namespace MH.GameLogic
                     if (_gameState != EGameState.Playing || _currentMatch == null)
                         return;
 
+                    var board = (s2c_board_status)packet;
                     _guestPrediction.ApplyBoardStatus(
                         _currentMatch,
                         _activeMatchId,
-                        (s2c_board_status)packet,
+                        board,
                         beforeReconcile: _showPredictionDebug ? CaptureSnapshotPredictionErrors : null);
+                    PushScoresToHud(board.Score0, board.Score1);
+                    break;
+                }
+                case EServerCmd.GoalScored:
+                {
+                    HandleGoalScored((s2c_goal_scored)packet);
                     break;
                 }
                 case EServerCmd.MatchResult:
@@ -300,6 +337,11 @@ namespace MH.GameLogic
         private void OnHostMatchResultFromSession(s2c_match_result result)
         {
             HandleMatchResult(result);
+        }
+
+        private void OnHostGoalScoredFromSession(s2c_goal_scored packet)
+        {
+            HandleGoalScored(packet);
         }
 
         private void OnServerConnected()
@@ -347,11 +389,13 @@ namespace MH.GameLogic
             }
         }
 
-        private void BeginLocalMatch(int matchId, int localPlayerIndex)
+        /// <param name="registerLocalGoalSimulation">True for offline/local tests; false when mirroring an authoritative server (LAN guest or dedicated client).</param>
+        private void BeginLocalMatch(int matchId, int localPlayerIndex, bool registerLocalGoalSimulation = false)
         {
             Debug.Log($"Match started: id={matchId}, localPlayer={localPlayerIndex}");
 
-            _currentMatch = new Match(0, 1, _config);
+            _syncScoresFromLocalMatch = registerLocalGoalSimulation;
+            _currentMatch = new Match(0, 1, BoardConfigForMatch, registerLocalGoalSimulation);
             FinishMatchSetup(matchId, localPlayerIndex);
         }
 
@@ -359,6 +403,7 @@ namespace MH.GameLogic
         {
             Debug.Log($"Host match started: id={matchId}, localPlayer={localPlayerIndex}");
 
+            _syncScoresFromLocalMatch = false;
             _currentMatch = authoritativeMatch;
             FinishMatchSetup(matchId, localPlayerIndex);
         }
@@ -385,9 +430,35 @@ namespace MH.GameLogic
             ApplyClientViewForLocalPlayer(_localPlayerIndex);
             _gameState = EGameState.Playing;
 
+            PushScoresToHud(0, 0);
             var ui = UIManager.Instance;
             ui?.Hide<UILoading>();
             ui?.Hide<UILobby>();
+            if (ui != null && ui.TryGet<UIScoreHud>(out var scoreHud))
+                scoreHud.Show();
+        }
+
+        void HandleGoalScored(s2c_goal_scored g)
+        {
+            if (_gameState != EGameState.Playing || g.MatchId != _activeMatchId)
+                return;
+            PushScoresToHud(g.Score0, g.Score1);
+        }
+
+        void PushScoresToHud(int score0, int score1)
+        {
+            var ui = UIManager.Instance;
+            if (ui != null && ui.TryGet<UIScoreHud>(out var hud))
+                hud.SetScores(score0, score1);
+        }
+
+        bool IsGameplayInputFrozen()
+        {
+            if (_gameState != EGameState.Playing || _currentMatch == null)
+                return false;
+            if (_isHost)
+                return _currentMatch.Phase == MatchPhase.PostGoal;
+            return _guestPrediction.LastAuthoritativeMatchPhase == (byte)MatchPhase.PostGoal;
         }
 
         private void HandleMatchResult(s2c_match_result result)
@@ -434,6 +505,7 @@ namespace MH.GameLogic
                 matchView.SetMatch(null);
             _currentMatch = null;
             _activeMatchId = 0;
+            _syncScoresFromLocalMatch = false;
             _hasLatestLocalTarget = false;
             _guestPrediction.Reset();
             _dbgHasSnapshotErrors = false;
@@ -453,6 +525,7 @@ namespace MH.GameLogic
             {
                 ui.Hide<UILoading>();
                 ui.Hide<UINotifyPopup>();
+                ui.Hide<UIScoreHud>();
                 if (ui.TryGet<UIMainMenu>(out _))
                     ui.Show<UIMainMenu>();
             }
@@ -522,7 +595,7 @@ namespace MH.GameLogic
         [Button]
         void TestMatch()
         {
-            BeginLocalMatch(0, 0);
+            BeginLocalMatch(0, 0, registerLocalGoalSimulation: true);
         }
 
         void TestSendPacket()

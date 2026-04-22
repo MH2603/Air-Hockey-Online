@@ -15,16 +15,19 @@ namespace MH.GameLogic
         private readonly BoardConfig _config;
         private readonly Action<int, Match, int> _onHostMatchStarted;
         private readonly Action<s2c_match_result> _onHostMatchEnded;
+        private readonly Action<s2c_goal_scored>? _onHostGoalScored;
         private bool _disposed;
 
         public HostGameSession(
             BoardConfig config,
             Action<int, Match, int> onHostMatchStarted,
-            Action<s2c_match_result> onHostMatchEnded)
+            Action<s2c_match_result> onHostMatchEnded,
+            Action<s2c_goal_scored>? onHostGoalScored = null)
         {
             _config = config;
             _onHostMatchStarted = onHostMatchStarted;
             _onHostMatchEnded = onHostMatchEnded;
+            _onHostGoalScored = onHostGoalScored;
         }
 
         /// <summary>Starts UDP listen + dispatcher; call <see cref="MatchmakingHandler.BeginHosting"/> after success.</summary>
@@ -38,6 +41,8 @@ namespace MH.GameLogic
             _matchmaking = new MatchmakingHandler(_dispatcher, _net);
             _matchmaking.OnMatchCreated += OnMatchCreated;
             _sessions.OnLocalHostMatchResult += _onHostMatchEnded;
+            if (_onHostGoalScored != null)
+                _sessions.OnLocalHostGoalScored += _onHostGoalScored;
             return true;
         }
 
@@ -84,6 +89,8 @@ namespace MH.GameLogic
             if (_sessions != null)
             {
                 _sessions.OnLocalHostMatchResult -= _onHostMatchEnded;
+                if (_onHostGoalScored != null)
+                    _sessions.OnLocalHostGoalScored -= _onHostGoalScored;
                 _sessions.Dispose();
                 _sessions = null;
             }

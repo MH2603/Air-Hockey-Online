@@ -45,19 +45,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 69127a48a4d9727479ac2aa0467f25d8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _config:
-    TableWidth: 9
-    TableLenght: 18
-    GoalWidth: 4.5
-    PuckRadius: 0.5
-    PaddleRadius: 1
-    WallThickness: 2
-    Bounciness: 0.95
-    f: 0.5
-    MinPuckSpeed: 0.1
-    MaxPuckSpeed: 30
-    PaddleMaxSpeed: 100
-    PaddlePositionFollow: 50
+  _matchConfig: {fileID: 11400000, guid: d770d91e91c7a4ff1bf9fb27acca06cd, type: 2}
+  _guestPredictionConfig: {fileID: 11400000, guid: 012fc58ee8fdc4ad39863b077eddb9a4,
+    type: 2}
   _showPredictionDebug: 1
 --- !u!114 &6195782703025212765
 MonoBehaviour:

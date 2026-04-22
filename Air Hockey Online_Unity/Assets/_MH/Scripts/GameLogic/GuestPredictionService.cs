@@ -10,17 +10,42 @@ namespace MH.GameLogic
     /// </summary>
     public class GuestPredictionService
     {
-        private const float ReconcileSoftLerp = 0.35f;
-        private const float PuckSnapDistance = 0.85f;
-        private const float PaddleSnapDistance = 1.2f;
+        private const float DefaultReconcileSoftLerp = 0.35f;
+        private const float DefaultPuckSnapDistance = 0.85f;
+        private const float DefaultPaddleSnapDistance = 1.2f;
+
+        private readonly float _reconcileSoftLerp;
+        private readonly float _puckSnapDistance;
+        private readonly float _paddleSnapDistance;
 
         private s2c_board_status _lastAuthoritativeBoard;
         private bool _hasAuthoritativeBoard;
+
+        /// <summary>Uses <paramref name="config"/> when non-null; otherwise previous built-in defaults.</summary>
+        public GuestPredictionService(GuestPredictionConfig config = null)
+        {
+            if (config != null)
+            {
+                _reconcileSoftLerp = config.ReconcileSoftLerp;
+                _puckSnapDistance = config.PuckSnapDistance;
+                _paddleSnapDistance = config.PaddleSnapDistance;
+            }
+            else
+            {
+                _reconcileSoftLerp = DefaultReconcileSoftLerp;
+                _puckSnapDistance = DefaultPuckSnapDistance;
+                _paddleSnapDistance = DefaultPaddleSnapDistance;
+            }
+        }
 
         public void Reset()
         {
             _hasAuthoritativeBoard = false;
         }
+
+        /// <summary>Last snapshot’s <see cref="MatchPhase"/> (Playing when no snapshot yet).</summary>
+        public byte LastAuthoritativeMatchPhase =>
+            _hasAuthoritativeBoard ? _lastAuthoritativeBoard.MatchPhase : (byte)MatchPhase.Playing;
 
         /// <summary>
         /// Guest: run shared <see cref="Match.Tick"/> at fixed rate between snapshots.
@@ -34,6 +59,9 @@ namespace MH.GameLogic
             float dt)
         {
             if (dt <= 0f)
+                return;
+
+            if (_hasAuthoritativeBoard && _lastAuthoritativeBoard.MatchPhase == (byte)MatchPhase.PostGoal)
                 return;
 
             int remoteId = localPlayerIndex == 0 ? 1 : 0;
@@ -76,33 +104,48 @@ namespace MH.GameLogic
             _hasAuthoritativeBoard = true;
         }
 
-        private static void ReconcileTowardServerState(Match match, s2c_board_status s)
+        private void ReconcileTowardServerState(Match match, s2c_board_status s)
         {
             var puckRoot = match.Puck.GetComponent<Root2D>();
             var puckMove = match.Puck.GetComponent<MoveComponent>();
             var p0 = match.GetPlayer(0);
             var p1 = match.GetPlayer(1);
 
-            var puckPos = puckRoot.Position;
             var serverPuck = new CustomVector2(s.PuckX, s.PuckY);
+            var serverVel = new CustomVector2(s.PuckVelX, s.PuckVelY);
+
+            if (s.MatchPhase == (byte)MatchPhase.PostGoal)
+            {
+                puckRoot.Position = serverPuck;
+                puckMove.SetVelocity(serverVel);
+                SnapPaddle(p0.Paddle.GetComponent<Root2D>(), new CustomVector2(s.Paddle0X, s.Paddle0Y));
+                SnapPaddle(p1.Paddle.GetComponent<Root2D>(), new CustomVector2(s.Paddle1X, s.Paddle1Y));
+                return;
+            }
+
+            var puckPos = puckRoot.Position;
             float puckErr = CustomVector2.Distance(puckPos, serverPuck);
-            float tPuck = puckErr >= PuckSnapDistance ? 1f : ReconcileSoftLerp;
+            float tPuck = puckErr >= _puckSnapDistance ? 1f : _reconcileSoftLerp;
             puckRoot.Position = LerpCv2(puckPos, serverPuck, tPuck);
 
             var vel = puckMove.CurrentVelocity;
-            var serverVel = new CustomVector2(s.PuckVelX, s.PuckVelY);
             puckMove.SetVelocity(LerpCv2(vel, serverVel, tPuck));
 
             ReconcilePaddle(p0.Paddle.GetComponent<Root2D>(), new CustomVector2(s.Paddle0X, s.Paddle0Y));
             ReconcilePaddle(p1.Paddle.GetComponent<Root2D>(), new CustomVector2(s.Paddle1X, s.Paddle1Y));
         }
 
-        private static void ReconcilePaddle(Root2D root, CustomVector2 serverPos)
+        private void ReconcilePaddle(Root2D root, CustomVector2 serverPos)
         {
             var pos = root.Position;
             float err = CustomVector2.Distance(pos, serverPos);
-            float t = err >= PaddleSnapDistance ? 1f : ReconcileSoftLerp;
+            float t = err >= _paddleSnapDistance ? 1f : _reconcileSoftLerp;
             root.Position = LerpCv2(pos, serverPos, t);
+        }
+
+        static void SnapPaddle(Root2D root, CustomVector2 serverPos)
+        {
+            root.Position = serverPos;
         }
 
         private static CustomVector2 LerpCv2(CustomVector2 a, CustomVector2 b, float t)

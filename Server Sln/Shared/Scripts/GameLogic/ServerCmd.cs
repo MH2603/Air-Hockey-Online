@@ -8,6 +8,7 @@ namespace MH.GameLogic
         MatchFound = 1,
         BoardStatus = 2,
         MatchResult = 3,
+        GoalScored = 4,
     }
 
     public struct s2c_match_found : INetPacket
@@ -43,6 +44,11 @@ namespace MH.GameLogic
         public float Paddle1X;
         public float Paddle1Y;
 
+        public int Score0;
+        public int Score1;
+        /// <summary><see cref="MatchPhase"/> on the authoritative match.</summary>
+        public byte MatchPhase;
+
         public void Deserialize(NetDataReader reader)
         {
             MatchId = reader.GetInt();
@@ -56,6 +62,10 @@ namespace MH.GameLogic
             Paddle0Y = reader.GetFloat();
             Paddle1X = reader.GetFloat();
             Paddle1Y = reader.GetFloat();
+
+            Score0 = reader.GetInt();
+            Score1 = reader.GetInt();
+            MatchPhase = reader.GetByte();
         }
 
         public void Serialize(NetDataWriter writer)
@@ -72,6 +82,41 @@ namespace MH.GameLogic
             writer.Put(Paddle0Y);
             writer.Put(Paddle1X);
             writer.Put(Paddle1Y);
+
+            writer.Put(Score0);
+            writer.Put(Score1);
+            writer.Put(MatchPhase);
+        }
+    }
+
+    public struct s2c_goal_scored : INetPacket
+    {
+        public int MatchId;
+        public int ScoringPlayerIndex;
+        public int ConcedingPlayerIndex;
+        public int Score0;
+        public int Score1;
+        public int ResetDurationMs;
+
+        public void Deserialize(NetDataReader reader)
+        {
+            MatchId = reader.GetInt();
+            ScoringPlayerIndex = reader.GetInt();
+            ConcedingPlayerIndex = reader.GetInt();
+            Score0 = reader.GetInt();
+            Score1 = reader.GetInt();
+            ResetDurationMs = reader.GetInt();
+        }
+
+        public void Serialize(NetDataWriter writer)
+        {
+            writer.Put((int)EServerCmd.GoalScored);
+            writer.Put(MatchId);
+            writer.Put(ScoringPlayerIndex);
+            writer.Put(ConcedingPlayerIndex);
+            writer.Put(Score0);
+            writer.Put(Score1);
+            writer.Put(ResetDurationMs);
         }
     }
 

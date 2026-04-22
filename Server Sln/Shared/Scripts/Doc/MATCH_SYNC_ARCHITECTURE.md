@@ -50,6 +50,12 @@ The `Match.Tick(dt)` updates paddles then puck, with collision response.
   - `int MatchId`
   - puck: `PuckX`, `PuckY`, `PuckVelX`, `PuckVelY`
   - paddles: `Paddle0X`, `Paddle0Y`, `Paddle1X`, `Paddle1Y`
+  - `int Score0`, `int Score1`
+  - `byte MatchPhase` — `0` = `MatchPhase.Playing`, `1` = `MatchPhase.PostGoal` (input frozen on authoritative side; guest should not run prediction ticks until `Playing` again).
+
+- `EServerCmd.GoalScored` / `s2c_goal_scored`
+  - `int MatchId`, `ScoringPlayerIndex`, `ConcedingPlayerIndex`, `Score0`, `Score1`, `ResetDurationMs`
+  - Emitted once when the puck enters a goal; listen-server invokes `MatchSessionManager.OnLocalHostGoalScored` for the local host peer instead of loopback send.
 
 ## Lifecycle / flow
 
@@ -107,5 +113,5 @@ The local `Match` drives `MatchView2D` and guest prediction.
 ## Notes / follow-ups
 
 - **Client prediction** for guests is implemented in Unity `GameRunner` (debug gizmo/HUD: `Show Prediction Debug`). Further work (rewind–replay, tick in protocol) is listed in [CLIENT_PREDICTION_IMPLEMENTATION_PLAN.md](CLIENT_PREDICTION_IMPLEMENTATION_PLAN.md).
-- Add scoring / goals by extending `s2c_board_status` (or adding separate events) once goal detection is implemented server-side.
+- **Goals / scoring**: authoritative `Match` detects puck vs `GoalFrame`, enters `PostGoal` for `BoardConfig.PostGoalResetDelaySeconds`, then respawns the puck beside the conceding player. Guests use `new Match(..., registerGoalTriggers: false)` so only the server awards goals; `GuestPredictionService` skips `Match.Tick` while `MatchPhase == PostGoal` and snaps state on `s2c_board_status`.
 

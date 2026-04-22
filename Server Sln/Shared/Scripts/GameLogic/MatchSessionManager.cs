@@ -20,6 +20,9 @@ namespace MH.GameLogic
         /// <summary>Raised when the host (listen-server) wins or should show match end UI locally.</summary>
         public event Action<s2c_match_result>? OnLocalHostMatchResult;
 
+        /// <summary>Raised when the listen-server host should show a goal (no loopback packet).</summary>
+        public event Action<s2c_goal_scored>? OnLocalHostGoalScored;
+
         public MatchSessionManager(PacketDispatcher dispatcher, INetworkManager network, BoardConfig config)
         {
             _dispatcher = dispatcher;
@@ -99,6 +102,21 @@ namespace MH.GameLogic
             {
                 running.Match.Tick(deltaTime);
 
+                if (running.Match.TryConsumeGoalScoredEvent(out var goalEv))
+                {
+                    var goalPacket = new s2c_goal_scored
+                    {
+                        MatchId = running.MatchId,
+                        ScoringPlayerIndex = goalEv.ScoringPlayerIndex,
+                        ConcedingPlayerIndex = goalEv.ConcedingPlayerIndex,
+                        Score0 = goalEv.Score0,
+                        Score1 = goalEv.Score1,
+                        ResetDurationMs = goalEv.ResetDurationMs,
+                    };
+                    DeliverGoalScored(running.PeerBottom, goalPacket);
+                    DeliverGoalScored(running.PeerTop, goalPacket);
+                }
+
                 var puckRoot = running.Match.Puck.GetComponent<Root2D>();
                 var puckMove = running.Match.Puck.GetComponent<MoveComponent>();
                 var p0 = running.Match.GetPlayer(0);
@@ -119,11 +137,23 @@ namespace MH.GameLogic
                     Paddle0Y = p0.Paddle.GetComponent<Root2D>().Position.y,
                     Paddle1X = p1.Paddle.GetComponent<Root2D>().Position.x,
                     Paddle1Y = p1.Paddle.GetComponent<Root2D>().Position.y,
+
+                    Score0 = running.Match.Score0,
+                    Score1 = running.Match.Score1,
+                    MatchPhase = (byte)running.Match.Phase,
                 };
 
                 SendBoardStatus(running.PeerBottom, status);
                 SendBoardStatus(running.PeerTop, status);
             }
+        }
+
+        private void DeliverGoalScored(int peerId, s2c_goal_scored packet)
+        {
+            if (peerId == NetworkConstants.HostLocalPeerId)
+                OnLocalHostGoalScored?.Invoke(packet);
+            else
+                _network.SendPacket(peerId, packet);
         }
 
         private void SendBoardStatus(int peerId, s2c_board_status status)

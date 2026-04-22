@@ -33,6 +33,9 @@ namespace MH.GameLogic{
         // WALLS — outer boundary wall thickness for puck collision (AABB depth).
         public float WallThickness = 2f;
 
+        /// <summary> Gap along y = 0 between upper and lower vertical side walls (see reference table art).</summary>
+        public float VerticalWallCenterGap = 0.12f;
+
         // PHYSICS — elasticity e for puck bounces; paddle influence f (blend of paddle velocity after hit).
         public float Bounciness     = 0.95f;
         public float f = 0.5f;
@@ -42,5 +45,11 @@ namespace MH.GameLogic{
         public float MaxPuckSpeed = 30f;
         public float PaddleMaxSpeed = 100f;
         public float PaddlePositionFollow = 50f;
+
+        /// <summary>After a goal, wait this many seconds before respawning the puck and resuming play.</summary>
+        public float PostGoalResetDelaySeconds = 1f;
+
+        /// <summary>Puck X offset when respawning beside the conceding player’s paddle row (world X).</summary>
+        public float PostGoalPuckSpawnOffsetX = 0f;
     }
 }
