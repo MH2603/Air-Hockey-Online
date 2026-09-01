@@ -89,7 +89,7 @@ namespace MH.GameLogic
             if (_gameState != EGameState.Playing || _currentMatch == null)
                 return;
 
-            // Input: guest sends to server; host applies directly to authoritative simulation.
+            // Input: guest samples mouse (sent on FixedUpdate with Tick); host applies to authoritative sim.
             if (Input.GetMouseButtonDown(0))
             {
                 _isMouseDown = true;
@@ -123,7 +123,6 @@ namespace MH.GameLogic
             {
                 _latestLocalTarget = target;
                 _hasLatestLocalTarget = true;
-                _clientNetwork?.SendToServer(new c2s_mouse_pos { X = target.x, Y = target.y });
             }
         }
 
@@ -131,6 +130,8 @@ namespace MH.GameLogic
         {
             if (_hostSession != null)
                 _hostSession.TickSimulation(Time.fixedDeltaTime);
+            else if (IsLocalTestMatch)
+                TickLocalTestMatch();
             else
                 GuestPredictionFixedStep();
         }
@@ -150,14 +151,18 @@ namespace MH.GameLogic
 
         void OnGUI()
         {
-            if (!_showPredictionDebug || !_dbgHasSnapshotErrors || _isHost)
+            if (!_showPredictionDebug || _isHost || _gameState != EGameState.Playing)
                 return;
 
             var style = GUI.skin.box;
+            var ticks =
+                $"tick client={_guestPrediction.ClientTick}  server={_guestPrediction.LastAppliedServerTick}  ack={_guestPrediction.LastAckedInputTick}  pending={_guestPrediction.PendingHistoryCount}";
+            var errors = _dbgHasSnapshotErrors
+                ? $"puck Δ {_dbgPuckErrMag:F3}  |  pad0 Δ {_dbgPad0ErrMag:F3}  |  pad1 Δ {_dbgPad1ErrMag:F3}"
+                : "puck Δ —  |  pad0 Δ —  |  pad1 Δ —";
             GUI.Box(
-                new Rect(8f, 8f, 280f, 72f),
-                $"Prediction vs server (last snapshot)\n" +
-                $"puck Δ {_dbgPuckErrMag:F3}  |  pad0 Δ {_dbgPad0ErrMag:F3}  |  pad1 Δ {_dbgPad1ErrMag:F3}",
+                new Rect(8f, 8f, 420f, 88f),
+                $"Prediction vs server (last snapshot)\n{errors}\n{ticks}",
                 style);
         }
 
@@ -307,6 +312,7 @@ namespace MH.GameLogic
                     _guestPrediction.ApplyBoardStatus(
                         _currentMatch,
                         _activeMatchId,
+                        _localPlayerIndex,
                         board,
                         beforeReconcile: _showPredictionDebug ? CaptureSnapshotPredictionErrors : null);
                     PushScoresToHud(board.Score0, board.Score1);
@@ -556,12 +562,22 @@ namespace MH.GameLogic
             if (_isHost || _gameState != EGameState.Playing || _currentMatch == null)
                 return;
 
-            _guestPrediction.FixedStep(
+            var tick = _guestPrediction.FixedStep(
                 _currentMatch,
                 _localPlayerIndex,
                 _hasLatestLocalTarget,
                 _latestLocalTarget,
                 Time.fixedDeltaTime);
+
+            if (tick == 0 || !_hasLatestLocalTarget)
+                return;
+
+            _clientNetwork?.SendToServer(new c2s_mouse_pos
+            {
+                X = _latestLocalTarget.x,
+                Y = _latestLocalTarget.y,
+                Tick = tick
+            });
         }
 
         private void CaptureSnapshotPredictionErrors(s2c_board_status s)
@@ -590,12 +606,67 @@ namespace MH.GameLogic
             _dbgHasSnapshotErrors = true;
         }
 
+        bool IsLocalTestMatch =>
+            _syncScoresFromLocalMatch && _gameState == EGameState.Playing && _currentMatch != null;
+
+        void TickLocalTestMatch()
+        {
+            if (_hasLatestLocalTarget && !IsGameplayInputFrozen())
+                _currentMatch.ApplyPaddleTargetFromWorld(_localPlayerIndex, _latestLocalTarget);
+            _currentMatch.Tick(Time.fixedDeltaTime);
+        }
+
+        void ClearLocalTestMatchParts()
+        {
+            var matchView = GetComponent<MatchView2D>();
+            if (matchView != null)
+                matchView.SetMatch(null);
+            _currentMatch = null;
+            _activeMatchId = 0;
+            _syncScoresFromLocalMatch = false;
+            _hasLatestLocalTarget = false;
+            _guestPrediction.Reset();
+            _dbgHasSnapshotErrors = false;
+        }
+
         #region Editor Methods
 
-        [Button]
+        [Button("Test Match")]
         void TestMatch()
         {
+            // Repeat clicks must not stack paddles/walls/puck from the previous test.
+            StopHosting();
+            _isHost = false;
+            ClearLocalTestMatchParts();
             BeginLocalMatch(0, 0, registerLocalGoalSimulation: true);
+        }
+
+        [Button("Test Post Goal Puck Respawn (Bottom)")]
+        void TestPostGoalPuckRespawnBottom()
+        {
+            TestPostGoalPuckRespawn(0);
+        }
+
+        [Button("Test Post Goal Puck Respawn (Top)")]
+        void TestPostGoalPuckRespawnTop()
+        {
+            TestPostGoalPuckRespawn(1);
+        }
+
+        void TestPostGoalPuckRespawn(int concedingPlayerId)
+        {
+            if (_currentMatch == null)
+                TestMatch();
+
+            _currentMatch.RespawnPuckBesideConcedingPlayer(concedingPlayerId);
+
+            // Edit mode has no Update follow; rebuild views so Scene view shows the spawn immediately.
+            if (!Application.isPlaying)
+            {
+                var matchView = GetComponent<MatchView2D>();
+                if (matchView != null)
+                    matchView.SetMatch(_currentMatch);
+            }
         }
 
         void TestSendPacket()
@@ -604,7 +675,8 @@ namespace MH.GameLogic
             var packet = new c2s_mouse_pos
             {
                 X = mousePos.x,
-                Y = mousePos.y
+                Y = mousePos.y,
+                Tick = 1
             };
             _clientNetwork?.SendToServer(packet);
         }

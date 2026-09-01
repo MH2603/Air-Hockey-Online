@@ -65,13 +65,46 @@ namespace MH.Views
         private void ClearSpawned()
         {
             for (int i = 0; i < _spawned.Count; i++)
-            {
-                if (_spawned[i] != null)
-                {
-                    Destroy(_spawned[i]);
-                }
-            }
+                DestroySpawnedObject(_spawned[i]);
             _spawned.Clear();
+
+            // Inspector TestMatch can run in edit mode; Destroy() leaves orphans, so sweep the spawn parent.
+            var parent = GetSpawnParent();
+            if (parent == null)
+                return;
+
+            if (spawnRoot != null)
+            {
+                for (int i = parent.childCount - 1; i >= 0; i--)
+                    DestroySpawnedObject(parent.GetChild(i).gameObject);
+                return;
+            }
+
+            for (int i = parent.childCount - 1; i >= 0; i--)
+            {
+                var child = parent.GetChild(i).gameObject;
+                if (IsMatchPartName(child.name))
+                    DestroySpawnedObject(child);
+            }
+        }
+
+        private static bool IsMatchPartName(string name)
+        {
+            return name == "Puck"
+                || name == "Wall"
+                || name.StartsWith("Paddle_")
+                || name.StartsWith("Goal_");
+        }
+
+        private static void DestroySpawnedObject(GameObject go)
+        {
+            if (go == null)
+                return;
+#if UNITY_EDITOR
+            DestroyImmediate(go);
+#else
+            Destroy(go);
+#endif
         }
 
         private void SpawnEntity<TView>(Entity entity, GameObject prefab, string name) where TView : EntityView2D

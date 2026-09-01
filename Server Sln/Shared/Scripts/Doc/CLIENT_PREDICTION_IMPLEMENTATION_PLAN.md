@@ -63,30 +63,27 @@ Choose one primary strategy; you can combine **snap for large error** with **ble
 - On `s2c_board_status`, set puck/paddle state to server values (current behavior).
 - **Con**: Reintroduces jitter if applied every packet.
 
-### B. Threshold snap / soft blend
+### B. Threshold snap / soft blend (shipped; incorrect for local paddle)
 
 - Compute error (e.g. distance for positions, optional velocity delta).
 - If error **< ε**: lerp toward server over a few frames.
 - If error **≥ ε**: snap (or teleport puck if catastrophic).
 
-Tune ε per entity (puck vs paddle).
+This is what `GuestPredictionService.ReconcileTowardServerState` does today. It is **wrong for the local paddle**: the snapshot is RTT/2 in the past, so lerp pulls the predicted paddle backward into unacked input. Keep B only as historical context.
 
-### C. Rewind and replay (most consistent for physics)
+### C. Rewind and replay (next: local player)
 
-- Store a short ring buffer of **inputs + state** keyed by **tick** or **sequence**.
-- When a snapshot for tick **T** arrives, restore state at **T**, then re-apply stored local inputs for ticks **T+1 … now**.
-- Requires **tick or sequence** in protocol (see below). Best when latency and packet loss make naive snap obvious.
+- Store a short ring buffer of **mouse targets keyed by client tick**.
+- Snapshot carries `ServerTick` + `LastProcessedInputTick`. Snap to server state at the ack tick, then re-apply stored local inputs for ticks **ack+1 … now**.
+- Full task breakdown: [PLAYER_PREDICTION_TICK_RECONCILE_PLAN.md](PLAYER_PREDICTION_TICK_RECONCILE_PLAN.md).
 
-**Suggested path for this project**: implement **B** first (blend + snap threshold), then move to **C** if competitive feel still suffers.
+## Protocol considerations (Phase 3 — required for replay)
 
-## Protocol considerations (optional but recommended for replay)
+Specified in [PLAYER_PREDICTION_TICK_RECONCILE_PLAN.md](PLAYER_PREDICTION_TICK_RECONCILE_PLAN.md) (breaking wire change; ship client + server together):
 
-Today, snapshots do not carry a **simulation tick** or **input sequence** id. For rewind-replay and latency measurement, consider extending **`s2c_board_status`** (or a side channel packet) with:
-
-- `ServerTick` (monotonic `uint` or `int` incremented each sim step), and/or
-- `LastProcessedInputSeq` per player (if you add sequence numbers to `c2s_mouse_pos`).
-
-Keep changes backward-compatible during rollout (feature flag or version field if you already have one).
+- `c2s_mouse_pos.Tick` (`uint`) — guest input / prediction step.
+- `s2c_board_status.ServerTick` — monotonic authoritative sim step (drop stale snapshots).
+- `s2c_board_status.LastProcessedInputTick` — **this recipient’s** last applied `c2s_mouse_pos.Tick`.
 
 ## Client integration sketch (Unity)
 
@@ -138,12 +135,13 @@ Concrete tasks:
 
 *Remote paddle approach (chosen): each predicted tick, `ApplyPaddleTargetFromWorld(remoteId, snapshotPosition)` using the latest `s2c_board_status` paddle coordinates — no extrapolation between packets.*
 
-### Phase 3 — Polish
+### Phase 3 — Tick-based rewind-replay
 
-- [x] Tune blend times and thresholds; cap maximum correction velocity to avoid visible pops.
-  - *Current mitigation: distance thresholds snap large errors in one packet; soft lerp otherwise (`GameRunner` constants). No extra per-frame correction velocity clamp.*
-- [ ] Optional: add **server tick** + **input history** and implement **rewind-replay** if needed.
-- [x] Update [MATCH_SYNC_ARCHITECTURE.md](MATCH_SYNC_ARCHITECTURE.md) “Notes / follow-ups” to point here once an approach is shipped.
+Lerp reconcile is **not** the final local-paddle policy. See [PLAYER_PREDICTION_TICK_RECONCILE_PLAN.md](PLAYER_PREDICTION_TICK_RECONCILE_PLAN.md).
+
+- [x] Tune blend times and thresholds (Phase 2 lerp; superseded for local paddle by rewind-replay).
+- [x] Add **`Tick` on `c2s_mouse_pos`**, **`ServerTick` + `LastProcessedInputTick` on `s2c_board_status`**, guest **input history**, and **rewind-replay** (no lerp of local paddle toward snapshot).
+- [x] Update [MATCH_SYNC_ARCHITECTURE.md](MATCH_SYNC_ARCHITECTURE.md) for tick protocol and rewind-replay.
 
 ## Risks and testing
 
@@ -154,5 +152,6 @@ Concrete tasks:
 ## References
 
 - [MATCH_SYNC_ARCHITECTURE.md](MATCH_SYNC_ARCHITECTURE.md) — current snapshot sync, packets, and responsibilities.
+- [PLAYER_PREDICTION_TICK_RECONCILE_PLAN.md](PLAYER_PREDICTION_TICK_RECONCILE_PLAN.md) — Phase 3 tick protocol, input history, rewind-replay.
 - [NETWORK_LAYER.md](NETWORK_LAYER.md) — transport and dispatcher (if extending packets).
 - [HOST_AS_SERVER_IMPLEMENTATION_PLAN.md](HOST_AS_SERVER_IMPLEMENTATION_PLAN.md) — host vs guest; prediction applies primarily to **guest** clients.

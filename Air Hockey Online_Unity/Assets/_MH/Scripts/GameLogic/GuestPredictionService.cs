@@ -1,57 +1,65 @@
 using System;
+using System.Collections.Generic;
 using MH.Core;
-using UnityEngine;
 
 namespace MH.GameLogic
 {
     /// <summary>
-    /// Guest-side prediction between <c>s2c_board_status</c> snapshots: local <see cref="Match.Tick"/>
-    /// and soft reconcile toward server state.
+    /// Guest-side prediction: local <see cref="Match.Tick"/> plus tick-keyed rewind-and-replay
+    /// against <c>s2c_board_status</c> (no lerp of the local paddle toward a stale snapshot).
     /// </summary>
     public class GuestPredictionService
     {
-        private const float DefaultReconcileSoftLerp = 0.35f;
-        private const float DefaultPuckSnapDistance = 0.85f;
-        private const float DefaultPaddleSnapDistance = 1.2f;
+        #region FIELDS
 
-        private readonly float _reconcileSoftLerp;
-        private readonly float _puckSnapDistance;
-        private readonly float _paddleSnapDistance;
+        const int HistoryCapacity = 120;
 
-        private s2c_board_status _lastAuthoritativeBoard;
-        private bool _hasAuthoritativeBoard;
+        readonly Queue<PredictedInput> _history = new Queue<PredictedInput>(HistoryCapacity);
 
-        /// <summary>Uses <paramref name="config"/> when non-null; otherwise previous built-in defaults.</summary>
-        public GuestPredictionService(GuestPredictionConfig config = null)
-        {
-            if (config != null)
-            {
-                _reconcileSoftLerp = config.ReconcileSoftLerp;
-                _puckSnapDistance = config.PuckSnapDistance;
-                _paddleSnapDistance = config.PaddleSnapDistance;
-            }
-            else
-            {
-                _reconcileSoftLerp = DefaultReconcileSoftLerp;
-                _puckSnapDistance = DefaultPuckSnapDistance;
-                _paddleSnapDistance = DefaultPaddleSnapDistance;
-            }
-        }
+        s2c_board_status _lastAuthoritativeBoard;
+        bool _hasAuthoritativeBoard;
+        bool _hasAppliedServerTick;
+        uint _lastAppliedServerTick;
+        uint _clientTick;
+        uint _lastAckedInputTick;
+        float _fixedDt = 1f / 60f;
 
-        public void Reset()
-        {
-            _hasAuthoritativeBoard = false;
-        }
+        #endregion
+
+        #region PROPERTIES
 
         /// <summary>Last snapshot’s <see cref="MatchPhase"/> (Playing when no snapshot yet).</summary>
         public byte LastAuthoritativeMatchPhase =>
             _hasAuthoritativeBoard ? _lastAuthoritativeBoard.MatchPhase : (byte)MatchPhase.Playing;
 
+        public uint ClientTick => _clientTick;
+        public uint LastAppliedServerTick => _lastAppliedServerTick;
+        public uint LastAckedInputTick => _lastAckedInputTick;
+        public int PendingHistoryCount => _history.Count;
+
+        #endregion
+
+        /// <summary>Config is retained for the serialized GameRunner field; Playing rewind does not use lerp.</summary>
+        public GuestPredictionService(GuestPredictionConfig config = null)
+        {
+            _ = config;
+        }
+
+        public void Reset()
+        {
+            _hasAuthoritativeBoard = false;
+            _hasAppliedServerTick = false;
+            _lastAppliedServerTick = 0;
+            _clientTick = 0;
+            _lastAckedInputTick = 0;
+            _history.Clear();
+        }
+
         /// <summary>
-        /// Guest: run shared <see cref="Match.Tick"/> at fixed rate between snapshots.
-        /// Remote paddle target comes from the last authoritative board when available.
+        /// Guest: stamp one input tick, record history, run shared <see cref="Match.Tick"/>.
+        /// Returns the stamped tick, or 0 if the step was skipped (PostGoal / invalid dt).
         /// </summary>
-        public void FixedStep(
+        public uint FixedStep(
             Match match,
             int localPlayerIndex,
             bool hasLatestLocalTarget,
@@ -59,32 +67,31 @@ namespace MH.GameLogic
             float dt)
         {
             if (dt <= 0f)
-                return;
+                return 0;
 
             if (_hasAuthoritativeBoard && _lastAuthoritativeBoard.MatchPhase == (byte)MatchPhase.PostGoal)
-                return;
+                return 0;
 
-            int remoteId = localPlayerIndex == 0 ? 1 : 0;
+            if (!hasLatestLocalTarget)
+                return 0;
 
-            if (hasLatestLocalTarget)
-                match.ApplyPaddleTargetFromWorld(localPlayerIndex, latestLocalTarget);
+            _fixedDt = dt;
+            _clientTick++;
+            PushHistory(_clientTick, latestLocalTarget);
 
-            if (_hasAuthoritativeBoard)
-            {
-                var remoteTarget = PaddlePositionFromStatus(_lastAuthoritativeBoard, remoteId);
-                match.ApplyPaddleTargetFromWorld(remoteId, remoteTarget);
-            }
-
-            match.Tick(dt);
+            ApplyPredictedTick(match, localPlayerIndex, latestLocalTarget, _hasAuthoritativeBoard, _lastAuthoritativeBoard);
+            return _clientTick;
         }
 
         /// <summary>
-        /// Apply a server snapshot: optional <paramref name="beforeReconcile"/> runs after validation
-        /// (e.g. debug capture of prediction error before correction).
+        /// Apply a server snapshot: drop stale <see cref="s2c_board_status.ServerTick"/>, snap,
+        /// then replay unacked local inputs. <paramref name="beforeReconcile"/> runs after validation
+        /// and before correction (debug error capture).
         /// </summary>
         public void ApplyBoardStatus(
             Match match,
             int activeMatchId,
+            int localPlayerIndex,
             s2c_board_status status,
             Action<s2c_board_status> beforeReconcile = null)
         {
@@ -96,71 +103,140 @@ namespace MH.GameLogic
             if (status.MatchId != activeMatchId)
                 return;
 
+            if (_hasAppliedServerTick && status.ServerTick <= _lastAppliedServerTick)
+                return;
+
             beforeReconcile?.Invoke(status);
 
-            ReconcileTowardServerState(match, status);
+            ReconcileTowardServerState(match, localPlayerIndex, status);
 
             _lastAuthoritativeBoard = status;
             _hasAuthoritativeBoard = true;
+            _lastAppliedServerTick = status.ServerTick;
+            _hasAppliedServerTick = true;
+            _lastAckedInputTick = status.LastProcessedInputTick;
         }
 
-        private void ReconcileTowardServerState(Match match, s2c_board_status s)
+        #region PRIVATE_METHODS
+
+        void ReconcileTowardServerState(Match match, int localPlayerIndex, s2c_board_status s)
+        {
+            SnapToSnapshot(match, s);
+
+            if (s.MatchPhase == (byte)MatchPhase.PostGoal)
+            {
+                _history.Clear();
+                return;
+            }
+
+            // No ack yet: keep history so the first real ack can replay.
+            if (s.LastProcessedInputTick == 0)
+                return;
+
+            if (HasHistoryGap(s.LastProcessedInputTick))
+            {
+                _history.Clear();
+                return;
+            }
+
+            DropAckedHistory(s.LastProcessedInputTick);
+            ReplayUnackedInputs(match, localPlayerIndex, s);
+        }
+
+        void SnapToSnapshot(Match match, s2c_board_status s)
         {
             var puckRoot = match.Puck.GetComponent<Root2D>();
             var puckMove = match.Puck.GetComponent<MoveComponent>();
             var p0 = match.GetPlayer(0);
             var p1 = match.GetPlayer(1);
 
-            var serverPuck = new CustomVector2(s.PuckX, s.PuckY);
-            var serverVel = new CustomVector2(s.PuckVelX, s.PuckVelY);
+            puckRoot.Position = new CustomVector2(s.PuckX, s.PuckY);
+            puckMove.SetVelocity(new CustomVector2(s.PuckVelX, s.PuckVelY));
 
-            if (s.MatchPhase == (byte)MatchPhase.PostGoal)
-            {
-                puckRoot.Position = serverPuck;
-                puckMove.SetVelocity(serverVel);
-                SnapPaddle(p0.Paddle.GetComponent<Root2D>(), new CustomVector2(s.Paddle0X, s.Paddle0Y));
-                SnapPaddle(p1.Paddle.GetComponent<Root2D>(), new CustomVector2(s.Paddle1X, s.Paddle1Y));
+            SnapPaddle(p0.Paddle, new CustomVector2(s.Paddle0X, s.Paddle0Y));
+            SnapPaddle(p1.Paddle, new CustomVector2(s.Paddle1X, s.Paddle1Y));
+        }
+
+        static void SnapPaddle(Paddle paddle, CustomVector2 serverPos)
+        {
+            paddle.GetComponent<Root2D>().Position = serverPos;
+            paddle.GetComponent<MoveComponent>().SetVelocity(CustomVector2.Zero);
+        }
+
+        void ReplayUnackedInputs(Match match, int localPlayerIndex, s2c_board_status snapshot)
+        {
+            if (_history.Count == 0 || _fixedDt <= 0f)
                 return;
+
+            foreach (var input in _history)
+                ApplyPredictedTick(match, localPlayerIndex, input.Target, hasRemoteBoard: true, snapshot);
+        }
+
+        void ApplyPredictedTick(
+            Match match,
+            int localPlayerIndex,
+            CustomVector2 localTarget,
+            bool hasRemoteBoard,
+            s2c_board_status remoteBoard)
+        {
+            int remoteId = localPlayerIndex == 0 ? 1 : 0;
+
+            match.ApplyPaddleTargetFromWorld(localPlayerIndex, localTarget);
+
+            if (hasRemoteBoard)
+            {
+                var remoteTarget = PaddlePositionFromStatus(remoteBoard, remoteId);
+                match.ApplyPaddleTargetFromWorld(remoteId, remoteTarget);
             }
 
-            var puckPos = puckRoot.Position;
-            float puckErr = CustomVector2.Distance(puckPos, serverPuck);
-            float tPuck = puckErr >= _puckSnapDistance ? 1f : _reconcileSoftLerp;
-            puckRoot.Position = LerpCv2(puckPos, serverPuck, tPuck);
-
-            var vel = puckMove.CurrentVelocity;
-            puckMove.SetVelocity(LerpCv2(vel, serverVel, tPuck));
-
-            ReconcilePaddle(p0.Paddle.GetComponent<Root2D>(), new CustomVector2(s.Paddle0X, s.Paddle0Y));
-            ReconcilePaddle(p1.Paddle.GetComponent<Root2D>(), new CustomVector2(s.Paddle1X, s.Paddle1Y));
+            match.Tick(_fixedDt);
         }
 
-        private void ReconcilePaddle(Root2D root, CustomVector2 serverPos)
+        void PushHistory(uint tick, CustomVector2 target)
         {
-            var pos = root.Position;
-            float err = CustomVector2.Distance(pos, serverPos);
-            float t = err >= _paddleSnapDistance ? 1f : _reconcileSoftLerp;
-            root.Position = LerpCv2(pos, serverPos, t);
+            if (_history.Count >= HistoryCapacity)
+                _history.Dequeue();
+
+            _history.Enqueue(new PredictedInput(tick, target));
         }
 
-        static void SnapPaddle(Root2D root, CustomVector2 serverPos)
+        void DropAckedHistory(uint lastProcessedInputTick)
         {
-            root.Position = serverPos;
+            while (_history.Count > 0 && _history.Peek().Tick <= lastProcessedInputTick)
+                _history.Dequeue();
         }
 
-        private static CustomVector2 LerpCv2(CustomVector2 a, CustomVector2 b, float t)
+        bool HasHistoryGap(uint lastProcessedInputTick)
         {
-            t = Mathf.Clamp01(t);
-            return new CustomVector2(
-                Mathf.Lerp(a.x, b.x, t),
-                Mathf.Lerp(a.y, b.y, t));
+            if (_history.Count == 0)
+                return _clientTick > lastProcessedInputTick;
+
+            return _history.Peek().Tick > lastProcessedInputTick + 1;
         }
 
-        private static CustomVector2 PaddlePositionFromStatus(s2c_board_status s, int playerId)
+        static CustomVector2 PaddlePositionFromStatus(s2c_board_status s, int playerId)
         {
             return playerId == 0
                 ? new CustomVector2(s.Paddle0X, s.Paddle0Y)
                 : new CustomVector2(s.Paddle1X, s.Paddle1Y);
         }
+
+        #endregion
+
+        #region INNER_TYPES
+
+        readonly struct PredictedInput
+        {
+            public readonly uint Tick;
+            public readonly CustomVector2 Target;
+
+            public PredictedInput(uint tick, CustomVector2 target)
+            {
+                Tick = tick;
+                Target = target;
+            }
+        }
+
+        #endregion
     }
 }

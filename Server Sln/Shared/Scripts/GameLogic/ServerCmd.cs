@@ -49,6 +49,11 @@ namespace MH.GameLogic
         /// <summary><see cref="MatchPhase"/> on the authoritative match.</summary>
         public byte MatchPhase;
 
+        /// <summary>Monotonic authoritative sim step for this match (first tick is 1).</summary>
+        public uint ServerTick;
+        /// <summary>This recipient’s last applied <c>c2s_mouse_pos.Tick</c> (0 = none yet).</summary>
+        public uint LastProcessedInputTick;
+
         public void Deserialize(NetDataReader reader)
         {
             MatchId = reader.GetInt();
@@ -66,6 +71,8 @@ namespace MH.GameLogic
             Score0 = reader.GetInt();
             Score1 = reader.GetInt();
             MatchPhase = reader.GetByte();
+            ServerTick = reader.GetUInt();
+            LastProcessedInputTick = reader.GetUInt();
         }
 
         public void Serialize(NetDataWriter writer)
@@ -86,6 +93,8 @@ namespace MH.GameLogic
             writer.Put(Score0);
             writer.Put(Score1);
             writer.Put(MatchPhase);
+            writer.Put(ServerTick);
+            writer.Put(LastProcessedInputTick);
         }
     }
 
