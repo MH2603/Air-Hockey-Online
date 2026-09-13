@@ -11,7 +11,7 @@ namespace MH.GameLogic
         private readonly UnityHostNetwork _net = new();
         private PacketDispatcher? _dispatcher;
         private MatchmakingHandler? _matchmaking;
-        private MatchSessionManager? _sessions;
+        private MatchSessionManager? _matchSsMan;
         private readonly BoardConfig _config;
         private readonly Action<int, Match, int> _onHostMatchStarted;
         private readonly Action<s2c_match_result> _onHostMatchEnded;
@@ -37,12 +37,12 @@ namespace MH.GameLogic
                 return false;
 
             _dispatcher = new PacketDispatcher(_net);
-            _sessions = new MatchSessionManager(_dispatcher, _net, _config);
+            _matchSsMan = new MatchSessionManager(_dispatcher, _net, _config);
             _matchmaking = new MatchmakingHandler(_dispatcher, _net);
             _matchmaking.OnMatchCreated += OnMatchCreated;
-            _sessions.OnLocalHostMatchResult += _onHostMatchEnded;
+            _matchSsMan.OnLocalHostMatchResult += _onHostMatchEnded;
             if (_onHostGoalScored != null)
-                _sessions.OnLocalHostGoalScored += _onHostGoalScored;
+                _matchSsMan.OnLocalHostGoalScored += _onHostGoalScored;
             return true;
         }
 
@@ -64,12 +64,12 @@ namespace MH.GameLogic
 
         public void TickSimulation(float deltaTime)
         {
-            _sessions?.TickAndBroadcast(deltaTime);
+            _matchSsMan?.TickAndBroadcast(deltaTime);
         }
 
         public void ApplyHostInput(float x, float y)
         {
-            _sessions?.ApplyHostBottomPaddleTarget(x, y);
+            _matchSsMan?.ApplyHostBottomPaddleTarget(x, y);
         }
 
         public void Dispose()
@@ -86,13 +86,13 @@ namespace MH.GameLogic
                 _matchmaking = null;
             }
 
-            if (_sessions != null)
+            if (_matchSsMan != null)
             {
-                _sessions.OnLocalHostMatchResult -= _onHostMatchEnded;
+                _matchSsMan.OnLocalHostMatchResult -= _onHostMatchEnded;
                 if (_onHostGoalScored != null)
-                    _sessions.OnLocalHostGoalScored -= _onHostGoalScored;
-                _sessions.Dispose();
-                _sessions = null;
+                    _matchSsMan.OnLocalHostGoalScored -= _onHostGoalScored;
+                _matchSsMan.Dispose();
+                _matchSsMan = null;
             }
 
             _dispatcher?.Dispose();
@@ -103,11 +103,11 @@ namespace MH.GameLogic
 
         private void OnMatchCreated(int matchId, int peerBottom, int peerTop)
         {
-            if (_sessions == null)
+            if (_matchSsMan == null)
                 return;
 
-            _sessions.CreateMatch(matchId, peerBottom, peerTop);
-            if (peerBottom == NetworkConstants.HostLocalPeerId && _sessions.TryGetMatch(matchId, out var match) && match != null)
+            _matchSsMan.CreateMatch(matchId, peerBottom, peerTop);
+            if (peerBottom == NetworkConstants.HostLocalPeerId && _matchSsMan.TryGetMatch(matchId, out var match) && match != null)
                 _onHostMatchStarted(matchId, match, 0);
         }
     }

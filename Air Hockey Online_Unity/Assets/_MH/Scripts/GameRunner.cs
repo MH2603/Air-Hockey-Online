@@ -669,17 +669,17 @@ namespace MH.GameLogic
             }
         }
 
-        void TestSendPacket()
-        {
-            var mousePos = Input.mousePosition;
-            var packet = new c2s_mouse_pos
-            {
-                X = mousePos.x,
-                Y = mousePos.y,
-                Tick = 1
-            };
-            _clientNetwork?.SendToServer(packet);
-        }
+        // void TestSendPacket()
+        // {
+        //     var mousePos = Input.mousePosition;
+        //     var packet = new c2s_mouse_pos
+        //     {
+        //         X = mousePos.x,
+        //         Y = mousePos.y,
+        //         Tick = 1
+        //     };
+        //     _clientNetwork?.SendToServer(packet);
+        // }
 
         #endregion
     }
