@@ -1,0 +1,12 @@
+# Unity MCP — IvanMurzak Unity-MCP ("AI Game Developer"), project-scoped.
+# Endpoint/token come from the Unity plugin:
+#   Air Hockey Online_Unity/UserSettings/AI-Game-Developer-Config.json
+#   (Unity: Window > AI Game Developer > Configure MCP)
+# The bearer token itself lives in <workspace>/.env as UNITY_MCP_TOKEN, which is
+# gitignored — `${VAR}` is expanded from the environment and the project .env.
+
+[[plugins]]
+name    = "ai-game-developer"
+type    = "http"
+url     = "http://localhost:26846"
+headers = { Authorization = "Bearer ${UNITY_MCP_TOKEN}" }

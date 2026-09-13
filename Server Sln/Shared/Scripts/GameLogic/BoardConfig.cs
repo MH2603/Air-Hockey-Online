@@ -26,6 +26,12 @@ namespace MH.GameLogic{
         public float TableLenght = 18f;
         public float GoalWidth = 4.5f;
 
+        /// <summary>World X offset applied to each goal frame position.</summary>
+        public float GoalFrameOffsetX = 0f;
+
+        /// <summary>Offset along the goal line toward table center (positive moves both goals inward).</summary>
+        public float GoalFrameOffsetY = 0f;
+
         // OBJECTS — puck / paddle circle radii (1 = reference scale in design notes).
         public float PuckRadius = 0.5f;
         public float PaddleRadius = 1f;
@@ -51,5 +57,8 @@ namespace MH.GameLogic{
 
         /// <summary>Puck X offset when respawning beside the conceding player’s paddle row (world X).</summary>
         public float PostGoalPuckSpawnOffsetX = 0f;
+
+        /// <summary>Puck Y offset from the conceding player’s paddle row toward table center (positive moves both spawns inward).</summary>
+        public float PostGoalPuckSpawnOffsetY = 0f;
     }
 }

@@ -177,6 +177,20 @@ namespace MH.GameLogic
             SetPaddleVelocity(playerId, vel);
         }
 
+        /// <summary>
+        /// Immediately place the puck at the post-goal spawn beside the conceding player and resume play.
+        /// Used by editor Test buttons; skips <see cref="BoardConfig.PostGoalResetDelaySeconds"/>.
+        /// </summary>
+        public void RespawnPuckBesideConcedingPlayer(int concedingPlayerId)
+        {
+            if (!_playerMap.ContainsKey(concedingPlayerId))
+                return;
+
+            ResetPuckAfterGoal(concedingPlayerId);
+            _phase = MatchPhase.Playing;
+            _concedingPlayerId = -1;
+        }
+
         void TickPostGoal(float deltaTime)
         {
             if (deltaTime > 0f)
@@ -209,7 +223,12 @@ namespace MH.GameLogic
                 ? -halfL + _config.PaddleRadius
                 : halfL - _config.PaddleRadius;
 
-            var pos = new CustomVector2(_config.PostGoalPuckSpawnOffsetX, paddleRowY);
+            // Positive OffsetY moves the puck toward center on both ends (same sign convention as GoalFrameOffsetY).
+            float spawnY = concedingPlayerId == _playerIdBottom
+                ? paddleRowY + _config.PostGoalPuckSpawnOffsetY
+                : paddleRowY - _config.PostGoalPuckSpawnOffsetY;
+
+            var pos = new CustomVector2(_config.PostGoalPuckSpawnOffsetX, spawnY);
             _puck.GetComponent<Root2D>().Position = pos;
             _puck.GetComponent<MoveComponent>().SetVelocity(CustomVector2.Zero);
         }
@@ -379,18 +398,25 @@ namespace MH.GameLogic
             // Puck starts at the center.
             _puck.GetComponent<Root2D>().Position = CustomVector2.Zero;
 
+            var goalOffsetX = _config.GoalFrameOffsetX;
+            var goalOffsetY = _config.GoalFrameOffsetY;
+
             var bottom = GetPlayer(playerIdBottom);
             if (bottom != null)
             {
                 bottom.Paddle.GetComponent<Root2D>().Position = new CustomVector2(0f, -TableLength / 2f + PaddleSize);
-                bottom.GoalFrame.GetComponent<Root2D>().Position = new CustomVector2(0f, -TableLength / 2f + WallThickness / 2f);
+                bottom.GoalFrame.GetComponent<Root2D>().Position = new CustomVector2(
+                    goalOffsetX,
+                    -TableLength / 2f + WallThickness / 2f + goalOffsetY);
             }
 
             var top = GetPlayer(playerIdTop);
             if (top != null)
             {
                 top.Paddle.GetComponent<Root2D>().Position = new CustomVector2(0f, TableLength / 2f - PaddleSize);
-                top.GoalFrame.GetComponent<Root2D>().Position = new CustomVector2(0f, TableLength / 2f - WallThickness / 2f);
+                top.GoalFrame.GetComponent<Root2D>().Position = new CustomVector2(
+                    goalOffsetX,
+                    TableLength / 2f - WallThickness / 2f - goalOffsetY);
             }
         }
     }

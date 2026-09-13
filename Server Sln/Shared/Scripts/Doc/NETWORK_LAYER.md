@@ -52,8 +52,8 @@ For commands that go through `PacketDispatcher`, the **first 4 bytes are always 
 
 Example: `c2s_mouse_pos` in `SharedLibrary/GameLogic/ClientCmd.cs`:
 
-- **Serialize** writes: `cmd` (`int`), then `X` (`float`), then `Y` (`float`).
-- **Deserialize** reads only: `X`, `Y` — because `PacketDispatcher` has already consumed the leading `int` to choose the packet type.
+- **Serialize** writes: `cmd` (`int`), then `X` (`float`), then `Y` (`float`), then `Tick` (`uint`).
+- **Deserialize** reads only: `X`, `Y`, `Tick` — because `PacketDispatcher` has already consumed the leading `int` to choose the packet type.
 
 **Important**: `Serialize` includes the command id so **outbound** messages are self-describing for the peer’s dispatcher. The server’s dispatcher **re-reads** that same leading int inside `HandleReceived` (the reader is still at position 0 for the full payload).
 

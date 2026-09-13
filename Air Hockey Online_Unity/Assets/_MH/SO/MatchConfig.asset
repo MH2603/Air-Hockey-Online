@@ -16,12 +16,18 @@ MonoBehaviour:
     TableWidth: 9
     TableLenght: 18
     GoalWidth: 4.5
+    GoalFrameOffsetX: 0
+    GoalFrameOffsetY: -3.5
     PuckRadius: 0.5
     PaddleRadius: 1
     WallThickness: 2
+    VerticalWallCenterGap: 0.12
     Bounciness: 0.95
     f: 0.5
     MinPuckSpeed: 0.1
     MaxPuckSpeed: 25
     PaddleMaxSpeed: 80
     PaddlePositionFollow: 50
+    PostGoalResetDelaySeconds: 0.5
+    PostGoalPuckSpawnOffsetX: 0
+    PostGoalPuckSpawnOffsetY: 2

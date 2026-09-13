@@ -100,6 +100,7 @@ namespace MH.Network
                 var writer = new NetDataWriter();
                 writer.Put(Query);
                 _net.SendUnconnectedMessage(writer, new IPEndPoint(IPAddress.Broadcast, GamePort));
+                Debug.Log($"Client find host with mess :  {Query} at port : {GamePort}");
             }
             catch (Exception e)
             {
@@ -109,6 +110,8 @@ namespace MH.Network
 
         private void OnUnconnectedReceived(IPEndPoint remoteEndPoint, NetPacketReader reader, UnconnectedMessageType messageType)
         {
+            Debug.Log($"[Client] Received response find_event from host with IP {remoteEndPoint.Address}");
+
             try
             {
                 if (reader.AvailableBytes <= 0)

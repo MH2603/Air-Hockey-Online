@@ -2,7 +2,9 @@ using UnityEngine;
 
 namespace MH.GameLogic
 {
-    /// <summary>Editor asset for guest-side prediction / reconcile tuning (between <c>s2c_board_status</c> snapshots).</summary>
+    /// <summary>
+    /// Editor asset kept for GameRunner assignment. Playing rewind-replay no longer uses lerp / snap distances.
+    /// </summary>
     [CreateAssetMenu(fileName = "GuestPredictionConfig", menuName = "MH/Game Logic/Guest Prediction Config", order = 0)]
     public sealed class GuestPredictionConfig : ScriptableObject
     {

@@ -140,10 +140,17 @@ namespace MH.Network
             }
         }
 
+        /// <summary>
+        /// receive pack from Unconnected Client and give it this host infor
+        /// </summary>
+        /// <param name="remoteEndPoint"></param>
+        /// <param name="reader"></param>
+        /// <param name="messageType"></param>
         private void HandleLanDiscoveryUnconnected(IPEndPoint remoteEndPoint, NetPacketReader reader, UnconnectedMessageType messageType)
         {
             try
             {
+                Debug.Log($"[Host] get recived from client {remoteEndPoint.Address}");
                 if (reader.AvailableBytes <= 0)
                     return;
 
@@ -151,6 +158,7 @@ namespace MH.Network
                 try
                 {
                     msg = reader.GetString();
+                    Debug.Log($"[HOST] Client sent mess {msg}");
                 }
                 catch
                 {

@@ -81,7 +81,7 @@ Until play starts, **disconnect** triggers `OnServerDisconnected` → notify pop
 ## Phase 3 — During play
 
 - **Host:** `FixedUpdate` drives `HostGameSession.TickSimulation`; host paddle targets via `ApplyHostInput`. Guest paddle targets arrive as `c2s_mouse_pos` on the host network stack.
-- **Guest:** `Update` sends mouse targets via `ClientNetwork.Send(c2s_mouse_pos)` when not host; `BoardStatus` packets update puck and paddles from authority.
+- **Guest:** `FixedUpdate` stamps `c2s_mouse_pos.Tick`, stores mouse history, and sends one packet per sim tick; `BoardStatus` snaps to the ack tick then replays unacked inputs.
 - **Condition:** `GameRunner.Update` only runs match input when `EGameState.Playing` and `_currentMatch != null`.
 
 ---

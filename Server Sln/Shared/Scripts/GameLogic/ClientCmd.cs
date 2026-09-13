@@ -23,18 +23,22 @@ namespace MH.GameLogic
     {
         public float X;
         public float Y;
+        /// <summary>Guest prediction / input tick (starts at 1). 0 is reserved as “no ack”.</summary>
+        public uint Tick;
 
         public void Deserialize(NetDataReader reader)
         {
-            X = reader.GetFloat();  
+            X = reader.GetFloat();
             Y = reader.GetFloat();
+            Tick = reader.GetUInt();
         }
 
         public void Serialize(NetDataWriter writer)
         {
-            writer.Put((int)EClientCmd.MousePos); // Gửi kèm loại lệnh để server biết cách xử lý
+            writer.Put((int)EClientCmd.MousePos);
             writer.Put(X);
             writer.Put(Y);
+            writer.Put(Tick);
         }
     }
 }

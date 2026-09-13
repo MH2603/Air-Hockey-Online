@@ -88,6 +88,9 @@ namespace MH.GameLogic
                 return;
 
             var mouse = (c2s_mouse_pos)packet;
+            if (!running.TryAcceptInputTick(link.playerId, mouse.Tick))
+                return;
+
             ApplyMouseToPlayer(running.Match, link.playerId, mouse.X, mouse.Y);
         }
 
@@ -101,6 +104,8 @@ namespace MH.GameLogic
             foreach (var running in _matchesById.Values)
             {
                 running.Match.Tick(deltaTime);
+                running.ServerTick++;
+                running.CommitInputAcks();
 
                 if (running.Match.TryConsumeGoalScoredEvent(out var goalEv))
                 {
@@ -141,9 +146,12 @@ namespace MH.GameLogic
                     Score0 = running.Match.Score0,
                     Score1 = running.Match.Score1,
                     MatchPhase = (byte)running.Match.Phase,
+                    ServerTick = running.ServerTick,
                 };
 
+                status.LastProcessedInputTick = running.LastProcessedInputTickForPlayer(0);
                 SendBoardStatus(running.PeerBottom, status);
+                status.LastProcessedInputTick = running.LastProcessedInputTickForPlayer(1);
                 SendBoardStatus(running.PeerTop, status);
             }
         }
@@ -208,6 +216,9 @@ namespace MH.GameLogic
         /// <summary>Holds one in-flight match and the LiteNetLib peer ids for each side (or <see cref="NetworkConstants.HostLocalPeerId"/> for the local host).</summary>
         private sealed class RunningMatch
         {
+            readonly uint[] _lastProcessedInputTick = new uint[2];
+            readonly uint[] _pendingAckTick = new uint[2];
+
             public RunningMatch(int matchId, int peerBottom, int peerTop, Match match)
             {
                 MatchId = matchId;
@@ -220,6 +231,33 @@ namespace MH.GameLogic
             public int PeerBottom { get; }
             public int PeerTop { get; }
             public Match Match { get; }
+            public uint ServerTick { get; set; }
+
+            public bool TryAcceptInputTick(int playerId, uint tick)
+            {
+                if (playerId < 0 || playerId > 1)
+                    return false;
+                if (tick == 0)
+                    return false;
+                if (tick <= _lastProcessedInputTick[playerId] || tick <= _pendingAckTick[playerId])
+                    return false;
+
+                _pendingAckTick[playerId] = tick;
+                return true;
+            }
+
+            public void CommitInputAcks()
+            {
+                _lastProcessedInputTick[0] = _pendingAckTick[0];
+                _lastProcessedInputTick[1] = _pendingAckTick[1];
+            }
+
+            public uint LastProcessedInputTickForPlayer(int playerId)
+            {
+                if (playerId < 0 || playerId > 1)
+                    return 0;
+                return _lastProcessedInputTick[playerId];
+            }
         }
     }
 }

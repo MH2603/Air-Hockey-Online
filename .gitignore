@@ -92,4 +92,7 @@ Server Sln/**/*.iml
 *.svd
 *.mdb
 Air Hockey Online_Unity/_Build
-Air Hockey Online_Unity/.reasonix
+
+# Local secrets: Unity MCP bearer token referenced as ${UNITY_MCP_TOKEN} in reasonix.toml
+.env
+.reasonix
